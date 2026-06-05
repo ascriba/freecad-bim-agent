@@ -49,7 +49,7 @@ The MCP server proxies all tool calls to the XML-RPC bridge. The bridge uses `Fr
 
 Mit `align_to="inside"` / `align_to="outside"` wird automatisch die korrekte Seite basierend auf der Wand-Normalen gewählt.
 
-## All 48 MCP Tools
+## All 61 MCP Tools
 
 ### Basis-Geometrie (9)
 `create_cube`, `create_cylinder`, `create_sphere`, `create_point`, `create_line`,
@@ -80,6 +80,18 @@ Mit `align_to="inside"` / `align_to="outside"` wird automatisch die korrekte Sei
 ### Metadaten & Utility (7)
 `set_ifc_data`, `set_material`, `get_quantities`, `export_ifc`, `analyze_ifc`,
 `capture_view`, `list_objects`, `execute_python`
+
+### MCP Tool Lücken — Hochpriorisiert (7)
+`get_object_info` (BBox/Align/State/Volumen), `rename_object` (Label setzen),
+`set_visibility` (ViewObject.Visibility), `move_line` (Draft Line Endpunkte),
+`create_opening` (Boolean-Cut für Durchbrüche), `copy_to_floor` (Wände auf Zielgeschoss),
+`create_attika` (Attika aus Slab-Perimeter)
+
+### MCP Tool Lücken — Mittelpriorisiert (6)
+`set_wall_alignment` (Baseline + Align kombiniert), `boolean_cut_finalize` (Cut-Nachsorge),
+`create_slab_with_openings` (Decke mit Durchbrüchen),
+`align_walls_in_container` (Bulk-Align pro Geschoss),
+`validate_model` (Invalid/Touched/Overlaps), `validate_ifc_export` (Preflight-Check)
 
 ## Material API (FreeCAD 0.21+)
 ```

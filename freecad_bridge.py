@@ -1132,6 +1132,299 @@ class RobustFreeCADBridge:
         except Exception as e: return f"Fehler: {str(e)}"
 
 
+    # --- Neue Tools (MCP Tool Lücken) ---
+    def objekt_info_abrufen(self, name):
+        try:
+            obj = self._get_obj(name)
+            if not obj: return "Nicht gefunden."
+            lines = [f"Label: {obj.Label}", f"Name: {obj.Name}", f"Type: {obj.TypeId}"]
+            if hasattr(obj, "Shape") and obj.Shape:
+                bb = obj.Shape.BoundBox
+                lines.append(f"BBox: X({bb.XMin:.1f}..{bb.XMax:.1f}) Y({bb.YMin:.1f}..{bb.YMax:.1f}) Z({bb.ZMin:.1f}..{bb.ZMax:.1f})")
+                lines.append(f"Volume: {obj.Shape.Volume:.1f}")
+            for attr in ["Align", "Width", "Height", "Length"]:
+                if hasattr(obj, attr):
+                    val = getattr(obj, attr)
+                    lines.append(f"{attr}: {val}")
+            if hasattr(obj, "State"):
+                lines.append(f"State: {obj.State}")
+            if hasattr(obj, "Base") and obj.Base and hasattr(obj.Base, "Shape"):
+                vs = obj.Base.Shape.Vertexes
+                if len(vs) >= 2:
+                    lines.append(f"Start: ({vs[0].Point.x:.1f}, {vs[0].Point.y:.1f}, {vs[0].Point.z:.1f})")
+                    lines.append(f"End: ({vs[-1].Point.x:.1f}, {vs[-1].Point.y:.1f}, {vs[-1].Point.z:.1f})")
+            return "\n".join(lines)
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def umbenennen_objekt(self, obj_name, neues_label):
+        try:
+            obj = self._get_obj(obj_name)
+            if not obj: return "Nicht gefunden."
+            obj.Label = neues_label
+            App.ActiveDocument.recompute()
+            return f"Umbenannt: {obj.Name} -> '{neues_label}'"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def sichtbarkeit_setzen(self, name, sichtbar):
+        try:
+            obj = self._get_obj(name)
+            if not obj: return "Nicht gefunden."
+            if hasattr(obj, "ViewObject") and obj.ViewObject:
+                obj.ViewObject.Visibility = bool(sichtbar)
+                return f"Sichtbarkeit {name}: {sichtbar}"
+            return "Kein ViewObject."
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def linie_verschieben(self, name, start_pkt, end_pkt):
+        try:
+            obj = self._get_obj(name)
+            if not obj: return "Nicht gefunden."
+            if not hasattr(obj, "StartPoint") or not hasattr(obj, "EndPoint"):
+                return "Keine Draft-Linie."
+            obj.StartPoint = self.to_vector(start_pkt)
+            obj.EndPoint = self.to_vector(end_pkt)
+            App.ActiveDocument.recompute()
+            return f"Linie {name} verschoben."
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def wand_ausrichtung_setzen(self, wand_name, ref_aussen=True):
+        try:
+            wall = self._get_obj(wand_name)
+            if not wall: return "Nicht gefunden."
+            if not hasattr(wall, "Base") or not wall.Base: return "Keine Basislinie."
+            vs = wall.Base.Shape.Vertexes
+            if len(vs) < 2: return "Ungültige Basis."
+            v_start, v_ende = vs[0].Point, vs[-1].Point
+            w_dir = (v_ende - v_start).normalize()
+            w_breite = float(wall.Width) if hasattr(wall, "Width") else 200.0
+            linke_normale = App.Vector(0, 0, 1).cross(w_dir).normalize()
+            versatz = w_breite / 2.0
+            if ref_aussen:
+                wall.Base.StartPoint = v_start + linke_normale * versatz
+                wall.Base.EndPoint = v_ende + linke_normale * versatz
+                wall.Align = "Right"
+            else:
+                wall.Base.StartPoint = v_start - linke_normale * versatz
+                wall.Base.EndPoint = v_ende - linke_normale * versatz
+                wall.Align = "Left"
+            App.ActiveDocument.recompute()
+            return f"Ausrichtung gesetzt: {wand_name}, ref_aussen={ref_aussen}"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def bool_cut_finalisieren(self, schnitt_name, neues_label, container="", verstecken=True):
+        try:
+            cut = self._get_obj(schnitt_name)
+            if not cut: return "Nicht gefunden."
+            cut.Label = neues_label
+            if verstecken:
+                if hasattr(cut, "Base") and cut.Base and hasattr(cut.Base, "ViewObject"):
+                    cut.Base.ViewObject.Visibility = False
+                if hasattr(cut, "Tool") and cut.Tool and hasattr(cut.Tool, "ViewObject"):
+                    cut.Tool.ViewObject.Visibility = False
+            if container:
+                cont = self._get_obj(container)
+                if cont:
+                    if hasattr(cont, "addObject"): cont.addObject(cut)
+                    elif hasattr(cont, "Group"):
+                        g = list(cont.Group); g.append(cut); cont.Group = g
+            App.ActiveDocument.recompute()
+            return f"Finalisiert: {neues_label}"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def erstelle_oeffnung(self, base_obj_name, form="rectangle", pos=None, groesse=None, name="Oeffnung"):
+        try:
+            if pos is None: pos = [0, 0, 0]
+            if groesse is None: groesse = [1, 1, 0.2]
+            doc = App.ActiveDocument
+            base = self._get_obj(base_obj_name)
+            if not base: return "Base nicht gefunden."
+            pos_v = self.to_vector(pos)
+            g_x = groesse[0] * 1000.0 if isinstance(groesse[0], (int, float)) else self._parse_unit(groesse[0])
+            g_y = groesse[1] * 1000.0 if isinstance(groesse[1], (int, float)) else self._parse_unit(groesse[1])
+            g_z = groesse[2] * 1000.0 if isinstance(groesse[2], (int, float)) else self._parse_unit(groesse[2])
+            tool = doc.addObject("Part::Box", "OpeningTool")
+            tool.Length, tool.Width, tool.Height = g_x, g_y, g_z
+            tool.Placement.Base = pos_v
+            cut = doc.addObject("Part::Cut", name)
+            cut.Base, cut.Tool = base, tool
+            if hasattr(base, "ViewObject"): base.ViewObject.Visibility = False
+            if hasattr(tool, "ViewObject"): tool.ViewObject.Visibility = False
+            cut.Label = name
+            doc.recompute()
+            return f"Öffnung: {cut.Label}"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def kopiere_nach_geschoss(self, wand_liste, ziel_geschoss, z_versatz=3.24, x_verlaengerung=0.0):
+        try:
+            import Arch, Draft
+            doc = App.ActiveDocument
+            z_mm = z_versatz * 1000.0
+            x_ext_mm = x_verlaengerung * 1000.0
+            ziel = self._get_obj(ziel_geschoss)
+            created = []
+            for wn in wand_liste:
+                src = self._get_obj(wn)
+                if not src: continue
+                if hasattr(src, "Base") and src.Base:
+                    vs = src.Base.Shape.Vertexes
+                    v1, v2 = vs[0].Point, vs[-1].Point
+                    v1_new = App.Vector(v1.x, v1.y, v1.z + z_mm)
+                    v2_new = App.Vector(v2.x, v2.y, v2.z + z_mm)
+                    if x_ext_mm != 0.0:
+                        richtung = (v2 - v1).normalize()
+                        v2_new = v2_new + richtung * x_ext_mm
+                    new_line = Draft.make_line(v1_new, v2_new)
+                    if hasattr(new_line, "ViewObject"): new_line.ViewObject.Visibility = False
+                    new_wall = Arch.makeWall(new_line)
+                    new_wall.Width = src.Width if hasattr(src, "Width") else 300.0
+                    new_wall.Height = src.Height if hasattr(src, "Height") else 2500.0
+                    new_wall.Align = src.Align if hasattr(src, "Align") else "Left"
+                    new_wall.Label = f"{src.Label}_OG"
+                    if ziel:
+                        if hasattr(ziel, "addObject"): ziel.addObject(new_wall)
+                        elif hasattr(ziel, "Group"):
+                            g = list(ziel.Group); g.append(new_wall); ziel.Group = g
+                    created.append(new_wall.Label)
+            doc.recompute()
+            return f"Kopiert: {', '.join(created)}" if created else "Keine Wände kopiert."
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def erstelle_attika(self, platte_name, hoehe=0.3, dicke=0.365, versatz=0.0, prefix="Attika"):
+        try:
+            import Arch, Draft
+            doc = App.ActiveDocument
+            slab = self._get_obj(platte_name)
+            if not slab: return "Platte nicht gefunden."
+            h_mm = hoehe * 1000.0; d_mm = dicke * 1000.0; v_mm = versatz * 1000.0
+            base_shape = slab.Base if hasattr(slab, "Base") and slab.Base else slab
+            shape = base_shape.Shape if hasattr(base_shape, "Shape") else None
+            if not shape: return "Keine Shape."
+            wires = shape.Wires
+            if not wires: return "Keine Drähte."
+            edges = wires[0].Edges if wires[0].isClosed() else wires[0].Edges
+            created = []
+            for i, edge in enumerate(edges):
+                v1, v2 = edge.Vertexes[0].Point, edge.Vertexes[-1].Point
+                if v_mm != 0.0:
+                    e_dir = (v2 - v1).normalize()
+                    n_dir = App.Vector(0, 0, 1).cross(e_dir).normalize()
+                    v1 += n_dir * v_mm; v2 += n_dir * v_mm
+                line = Draft.make_line(v1, v2)
+                if hasattr(line, "ViewObject"): line.ViewObject.Visibility = False
+                wall = Arch.makeWall(line)
+                wall.Width = d_mm; wall.Height = h_mm
+                wall.Label = f"{prefix}_{i+1}"
+                wall.Align = "Left"
+                doc.recompute()
+                created.append(wall.Label)
+            return f"Attika: {', '.join(created)}" if created else "Keine Attika erstellt."
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def erstelle_decke_mit_oeffnungen(self, laenge="10m", breite="8m", hoehe="300mm",
+                                    px="0mm", py="0mm", pz="0mm", oeffnungen=None, name="Geschossdecke"):
+        try:
+            if oeffnungen is None: oeffnungen = []
+            doc = App.ActiveDocument or App.newDocument("BIM")
+            l = self._parse_unit(laenge); b = self._parse_unit(breite); h = self._parse_unit(hoehe)
+            px_mm = self._parse_unit(px); py_mm = self._parse_unit(py); pz_mm = self._parse_unit(pz)
+            slab = doc.addObject("Part::Box", "SlabBase")
+            slab.Length, slab.Width, slab.Height = l, b, h
+            slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm)
+            current = slab
+            for i, o in enumerate(oeffnungen):
+                ox = o["x"] * 1000.0; oy = o["y"] * 1000.0
+                ow = o["w"] * 1000.0; oh = o["h"] * 1000.0
+                tool = doc.addObject("Part::Box", f"OpeningTool_{i}")
+                tool.Length, tool.Width, tool.Height = ow, oh, h + 10.0
+                tool.Placement.Base = App.Vector(px_mm + ox, py_mm + oy, pz_mm - 5.0)
+                cut = doc.addObject("Part::Cut", f"SlabCut_{i}")
+                cut.Base, cut.Tool = current, tool
+                if hasattr(current, "ViewObject"): current.ViewObject.Visibility = False
+                if hasattr(tool, "ViewObject"): tool.ViewObject.Visibility = False
+                current = cut
+            current.Label = name
+            doc.recompute()
+            return f"Decke mit {len(oeffnungen)} Öffnungen: {current.Label}"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def waende_in_container_ausrichten(self, container_name, ref_aussen="outside"):
+        try:
+            doc = App.ActiveDocument
+            cont = self._get_obj(container_name)
+            if not cont: return "Container nicht gefunden."
+            objs = cont.Group if hasattr(cont, "Group") else []
+            aligned = 0
+            for obj in objs:
+                if "Wall" not in obj.TypeId: continue
+                if not hasattr(obj, "Base") or not obj.Base: continue
+                vs = obj.Base.Shape.Vertexes
+                if len(vs) < 2: continue
+                w_dir = (vs[-1].Point - vs[0].Point).normalize()
+                is_east = abs(w_dir.x) > abs(w_dir.y)
+                if ref_aussen == "outside":
+                    if is_east:
+                        obj.Align = "Right" if w_dir.x > 0 else "Left"
+                    else:
+                        obj.Align = "Left" if w_dir.y > 0 else "Right"
+                else:
+                    if is_east:
+                        obj.Align = "Left" if w_dir.x > 0 else "Right"
+                    else:
+                        obj.Align = "Right" if w_dir.y > 0 else "Left"
+                aligned += 1
+            doc.recompute()
+            return f"{aligned} Wände ausgerichtet in '{container_name}'"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def modell_validieren(self):
+        try:
+            doc = App.ActiveDocument
+            if not doc: return "Kein Dokument."
+            lines = []
+            objs = doc.Objects
+            invalid = [o.Label for o in objs if hasattr(o, "State") and "Invalid" in str(o.State)]
+            touched = [o.Label for o in objs if hasattr(o, "State") and "Touched" in str(o.State)]
+            no_container = []
+            for o in objs:
+                has_parent = any(hasattr(p, "Group") and o in p.Group for p in objs)
+                if not has_parent: no_container.append(o.Label)
+            if invalid: lines.append(f"INVALID: {', '.join(invalid)}")
+            if touched: lines.append(f"TOUCHED: {', '.join(touched)}")
+            if no_container: lines.append(f"Ohne Container: {', '.join(no_container)}")
+            overlaps = []
+            for i, a in enumerate(objs):
+                if not hasattr(a, "Shape") or not a.Shape: continue
+                for j, b in enumerate(objs):
+                    if j <= i: continue
+                    if not hasattr(b, "Shape") or not b.Shape: continue
+                    if a.Shape.BoundBox.intersect(b.Shape.BoundBox):
+                        overlaps.append(f"{a.Label} ∩ {b.Label}")
+            if overlaps:
+                overlap_str = "\n  ".join(overlaps[:10])
+                lines.append(f"Überlappungen:\n  {overlap_str}")
+            return "\n".join(lines) if lines else "OK"
+        except Exception as e: return f"Fehler: {str(e)}"
+
+    def validiere_ifc_export(self):
+        try:
+            doc = App.ActiveDocument
+            if not doc: return "Kein Dokument."
+            warnings = []
+            for o in doc.Objects:
+                issues = []
+                if not hasattr(o, "IfcType") or not o.IfcType:
+                    issues.append("kein IFC-Typ")
+                if not hasattr(o, "Material") or not o.Material:
+                    issues.append("kein Material")
+                in_container = any(hasattr(p, "Group") and o in p.Group for p in doc.Objects)
+                if not in_container:
+                    issues.append("nicht in Container")
+                if issues:
+                    warnings.append(f"  {o.Label} ({o.Name}): {', '.join(issues)}")
+            if warnings: return "IFC-Warnungen:\n" + "\n".join(warnings)
+            return "IFC-Export bereit."
+        except Exception as e: return f"Fehler: {str(e)}"
+
     def run_python(self, script):
         try:
             import FreeCADGui as Gui

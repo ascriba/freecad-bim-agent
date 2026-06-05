@@ -943,6 +943,210 @@ def create_2d_view(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+# --- MCP Tool Lücken (13 neue Tools) ---
+@mcp.tool()
+def get_object_info(object_name: str) -> str:
+    """
+    Gibt detaillierte Informationen zu einem FreeCAD-Objekt zurück:
+    Typ, Label, Name, Bounding Box, Align, State, Volumen, Basislinie (für Wände).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.objekt_info_abrufen(object_name)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def rename_object(object: str, new_label: str) -> str:
+    """
+    Benennt ein FreeCAD-Objekt um (setzt das Label).
+    
+    Args:
+        object: Name oder aktuelles Label des Objekts.
+        new_label: Neues Label für das Objekt.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.umbenennen_objekt(object, new_label)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def set_visibility(object: str, visible: bool) -> str:
+    """
+    Setzt die Sichtbarkeit eines Objekts in der 3D-Ansicht.
+    Wichtig nach Boolean-Cut: Quellen verstecken (visible=false) damit das Cut-Ergebnis gültig bleibt.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.sichtbarkeit_setzen(object, visible)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def move_line(line: str, start: list[float], end: list[float]) -> str:
+    """
+    Verschiebt die Start/End-Punkte einer Draft-Linie.
+    Nützlich für Baseline-Korrekturen bei Wänden.
+    
+    Args:
+        line: Name oder Label der Draft-Linie.
+        start: Neuer Startpunkt als [X, Y, Z] in METERN.
+        end: Neuer Endpunkt als [X, Y, Z] in METERN.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.linie_verschieben(line, start, end)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def set_wall_alignment(wall: str, ref_at_outside: bool = True) -> str:
+    """
+    Verschiebt die Referenzlinie einer Wand an die Außenkante und setzt das Align.
+    In einem Schritt: Baseline verschieben + korrektes Align setzen.
+    
+    Args:
+        wall: Name oder Label der Wand.
+        ref_at_outside: Wenn True, wird die Referenzlinie an die Außenseite gelegt.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.wand_ausrichtung_setzen(wall, ref_at_outside)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def boolean_cut_finalize(cut_result: str, new_label: str, container: str = "", hide_sources: bool = True) -> str:
+    """
+    Schließt einen Boolean-Cut ab: Ergebnis umbenennen, Quellen verstecken, in Container einsortieren.
+    Erspart die manuellen Nachbearbeitungsschritte.
+    
+    Args:
+        cut_result: Name des Cut-Objekts (z.B. "Schnitt").
+        new_label: Neues Label für das Cut-Ergebnis.
+        container: Optionaler Container (z.B. "Obergeschoss") für die Einsortierung.
+        hide_sources: Quellobjekte verstecken (Standard: True).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.bool_cut_finalisieren(cut_result, new_label, container, hide_sources)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def create_opening(base_object: str, shape: str = "rectangle", position: list[float] = None, size: list[float] = None, name: str = "Oeffnung") -> str:
+    """
+    Erstellt eine Öffnung (Durchbruch) in einem Bauteil via Boolean-Cut.
+    IFC-konforme Alternative zu manuellem Schneiden.
+    
+    Args:
+        base_object: Name oder Label des Basis-Objekts (z.B. Decke, Wand).
+        shape: Form der Öffnung (nur 'rectangle' unterstützt).
+        position: Position als [X, Y, Z] in METERN.
+        size: Größe als [Width, Height, Depth] in METERN.
+        name: Label der Öffnung.
+    """
+    if position is None: position = [0, 0, 0]
+    if size is None: size = [1, 1, 0.2]
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_oeffnung(base_object, shape, position, size, name)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def copy_to_floor(source_walls: list[str], target_floor: str, z_offset: float = 3.24, x_extension: float = 0.0) -> str:
+    """
+    Kopiert Wände von einem Geschoss auf ein anderes (z.B. EG -> OG).
+    Die kopierten Wände werden auf die Zielgeschoss-Höhe verschoben und können verlängert werden.
+    
+    Args:
+        source_walls: Liste von Wand-Namen/Labeln (z.B. ["KA_Nord_EG", "KA_Ost_EG"]).
+        target_floor: Ziel-Container (z.B. "Obergeschoss").
+        z_offset: Höhenversatz in METERN (z.B. 3.24 für 3,24m Geschosshöhe).
+        x_extension: Verlängerung der Wand in METERN (0 = keine).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.kopiere_nach_geschoss(source_walls, target_floor, z_offset, x_extension)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def create_attika(roof_slab: str, height: float = 0.3, thickness: float = 0.365, offset: float = 0.0, name_prefix: str = "Attika") -> str:
+    """
+    Erzeugt Attika-Wände automatisch entlang des Slab-Perimeters.
+    
+    Args:
+        roof_slab: Name oder Label der Dachplatte.
+        height: Attikahöhe in METERN (z.B. 0.3 für 30cm).
+        thickness: Attikadicke in METERN (z.B. 0.365 für 36,5cm).
+        offset: Versatz vom Plattenrand in METERN (0 = bündig).
+        name_prefix: Namenspräfix für die Attika-Wände.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_attika(roof_slab, height, thickness, offset, name_prefix)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def create_slab_with_openings(length: str = "10m", width: str = "8m", height: str = "300mm",
+                             placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm",
+                             openings: list[dict] = None, name: str = "Geschossdecke") -> str:
+    """
+    Erstellt eine Geschossdecke mit rechteckigen Durchbrüchen in einem Schritt.
+    'openings' ist eine Liste von Dicts: {"x": 1.4, "y": 0.9, "w": 3.7, "h": 1.2}
+    wobei x,y relative Offsets von der Slab-Platzierung in METERN sind und w,h die Öffnungsgrösse in METERN.
+    
+    Args:
+        length: Länge der Decke als String (z.B. '10m').
+        width: Breite der Decke als String (z.B. '8m').
+        height: Dicke der Decke als String (z.B. '300mm').
+        placement_x: X-Platzierung.
+        placement_y: Y-Platzierung.
+        placement_z: Z-Platzierung (Oberkante).
+        openings: Liste von Öffnungs-Dicts mit x,y,w,h in METERN.
+        name: Label der Decke.
+    """
+    if openings is None: openings = []
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_decke_mit_oeffnungen(length, width, height, placement_x, placement_y, placement_z, openings, name)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def align_walls_in_container(container: str, ref_at: str = "outside") -> str:
+    """
+    Richtet alle Wände in einem Container (Geschoss) einheitlich aus.
+    Erkennt automatisch Nord/Süd/Ost/West und setzt korrektes Align.
+    
+    Args:
+        container: Name des Containers (z.B. "Erdgeschoss").
+        ref_at: "outside" für Außenausrichtung, "inside" für Innenausrichtung.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.waende_in_container_ausrichten(container, ref_at)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def validate_model() -> str:
+    """
+    Validiert das gesamte FreeCAD-Modell:
+    - Objekte mit State="Invalid" oder "Touched"
+    - Überlappungen zwischen Objekten (Bounding Box)
+    - Objekte ohne Container-Zuordnung
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.modell_validieren()
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def validate_ifc_export() -> str:
+    """
+    Preflight-Check vor IFC-Export:
+    Prüft IFC-Typ, Material und Container-Zugehörigkeit für alle Objekte.
+    Gibt Warnungen für fehlende Angaben aus.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.validiere_ifc_export()
+    except Exception as e: return f"Fehler: {str(e)}"
+
 if __name__ == "__main__":
     # Startet den MCP-Server
     mcp.run()
