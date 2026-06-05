@@ -152,6 +152,18 @@ python mcp_server.py
 - `str` Parameter (z.B. `"300mm"`, `"1.5m"`) = direkt mit Einheit
 - Winkel als Grad: `"45deg"` oder `float`
 
+## Sicherheitshinweis
+
+Dieser MCP-Server stellt über XML-RPC (localhost:8000) eine direkte Schnittstelle zur FreeCAD-Python-Umgebung bereit.
+
+**`execute_python`** führt beliebigen Python-Code in FreeCAD aus — dies ist ein bewusstes RCE-Tool (Escape Hatch). Auch nach Entfernen von `os` aus dem exec-Namespace kann Code-Escaping nicht verhindert werden.
+
+**Path-Traversal-Schutz:** Alle Import/Export-Tools (`import_dxf`, `export_dxf`, `export_pdf`, `export_svg`, `export_ifc`, `analyze_ifc`, `capture_view`) beschränken Dateizugriffe auf das Arbeitsverzeichnis. `../`-Traversal wird via `os.path.realpath()` blockiert.
+
+**Audit-Log:** Sicherheitskritische Aktionen (DELETE, EXPORT, IMPORT, ANALYZE, EXECUTE_PYTHON) werden in der FreeCAD-Konsole ausgegeben.
+
+**Nutzung nur in vertrauenswürdigen Umgebungen.** Der Server ist nur für localhost ausgelegt und sollte nicht exposed werden.
+
 ## Entwicklung
 
 ### Test- und Debug-Plan
