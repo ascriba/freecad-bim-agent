@@ -214,7 +214,11 @@ class RobustFreeCADBridge:
         try:
             obj = self._get_obj(name)
             if not obj: return "Nicht gefunden."
-            obj.Placement.Base = App.Vector(self._parse_unit(x), self._parse_unit(y), self._parse_unit(z))
+            # MCP-Tool übergibt Meter (float) → in mm konvertieren
+            x_mm = x * 1000.0 if isinstance(x, (int, float)) else self._parse_unit(x)
+            y_mm = y * 1000.0 if isinstance(y, (int, float)) else self._parse_unit(y)
+            z_mm = z * 1000.0 if isinstance(z, (int, float)) else self._parse_unit(z)
+            obj.Placement.Base = App.Vector(x_mm, y_mm, z_mm)
             App.ActiveDocument.recompute()
             return "Position gesetzt."
         except Exception as e: return f"Fehler: {str(e)}"
@@ -283,19 +287,27 @@ class RobustFreeCADBridge:
             return f"Floor: {f.Label}"
         except Exception as e: return f"Fehler: {str(e)}"
 
-    def erstelle_bodenplatte(self, length="10m", width="8m", height="200mm", name="Bodenplatte"):
+    def erstelle_bodenplatte(self, length="10m", width="8m", height="200mm", name="Bodenplatte",
+                          placement_x="0mm", placement_y="0mm", placement_z="0mm"):
         try:
             import Arch, Draft
             doc = App.ActiveDocument or App.newDocument("BIM")
             rect = Draft.makeRectangle(self._parse_unit(length), self._parse_unit(width))
             if hasattr(rect, "ViewObject"): rect.ViewObject.Visibility = False
-            # Create a structure and define it as a slab
             slab = Arch.makeStructure(rect)
             slab.IfcType = "Slab"
-            slab.Height = 150  # mm
-            slab.Normal = (0, 0, -1)  # Slab is extruded downwards
+            h_val = self._parse_unit(height)
+            slab.Height = h_val
+            slab.touch()
+            slab.Normal = (0, 0, -1)
             slab.Label = name
+            slab.Placement.Base = App.Vector(self._parse_unit(placement_x), self._parse_unit(placement_y), self._parse_unit(placement_z))
             doc.recompute()
+            # Sicherstellen, dass Height korrekt übernommen wurde
+            if float(slab.Height) != h_val:
+                slab.Height = str(h_val)
+                slab.touch()
+                doc.recompute()
             return f"Slab: {slab.Label}"
         except Exception as e: return f"Fehler: {str(e)}"
 
@@ -333,27 +345,53 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler in Bridge: {str(e)}"
     
-    def ausrichten_wand(self, wand_bezeichnung, align):
+    def ausrichten_wand(self, wand_bezeichnung, align="Left", align_to=None):
         try:
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
 
-            # 1. Wand anhand des Labels finden
             wall = None
             for obj in doc.Objects:
                 if obj.Label == wand_bezeichnung:
                     wall = obj
                     break
-            
+
             if wall is None:
                 return f"Fehler: Wand '{wand_bezeichnung}' nicht gefunden."
-            
+
+            # align_to überschreibt align wenn gesetzt
+            if align_to is not None:
+                align_lookup = {
+                    "left": "Left",
+                    "center": "Center",
+                    "right": "Right",
+                }
+                if align_to.lower() in align_lookup:
+                    align = align_lookup[align_to.lower()]
+                elif align_to.lower() in ("inside", "outside"):
+                    # Richtung der Wand ermitteln
+                    if hasattr(wall, "Base") and wall.Base:
+                        v_start = wall.Base.Shape.Vertexes[0].Point
+                        v_ende = wall.Base.Shape.Vertexes[-1].Point
+                        w_dir = (v_ende - v_start).normalize()
+                        # Linke Normale: 90° im Uhrzeigersinn von Wandrichtung
+                        linke_normale = App.Vector(0, 0, 1).cross(w_dir).normalize()
+                    else:
+                        linke_normale = App.Vector(0, -1, 0)
+                    # "Left" = Wand geht zur linken Seite der Richtung
+                    # Für "outside" nehmen wir "Left", für "inside" "Right"
+                    if align_to.lower() == "outside":
+                        align = "Left"
+                    else:
+                        align = "Right"
+                else:
+                    return f"Fehler: Unbekannter align_to-Wert '{align_to}'. Erlaubt: left, center, right, inside, outside."
+
             wall.Align = align
-            
             doc.recompute()
-            return f"Erfolgreich: Wand '{wand_bezeichnung}' ausgerichtet."
-            
+            return f"Erfolgreich: Wand '{wand_bezeichnung}' auf '{align}' ausgerichtet."
+
         except Exception as e:
             return f"Fehler in Bridge im tool Wand_ausrichten: {str(e)}"
         
@@ -385,35 +423,31 @@ class RobustFreeCADBridge:
         
 
 
-    def fuege_fenster_ein(self, wand_bezeichnung, distance_from_start="1.5m", width="900mm", height="2000mm", sill_height="0mm", windowtype="Simple door"):
+    def fuege_fenster_ein(self, wand_bezeichnung, distance_from_start="1.5m", width="900mm", height="2000mm", sill_height="0mm", windowtype="Simple door", name="Fenster"):
         try:
             import Arch
-            
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
 
-            # 1. Wand anhand des Labels finden
             wall = None
             for obj in doc.Objects:
                 if obj.Label == wand_bezeichnung:
                     wall = obj
                     break
-            
+
             if not wall:
                 wall = doc.getObject(wand_bezeichnung)
-                
+
             if not wall:
                 return f"Fehler: Wand '{wand_bezeichnung}' nicht gefunden."
 
-            # Einheiten parsen
             dist = self._parse_unit(distance_from_start)
             w_val = self._parse_unit(width)
             h_val = self._parse_unit(height)
             s_val = self._parse_unit(sill_height)
 
-            # 2. Placement aus der Basis-Linie berechnen (robust auch nach Wand-Vereinigung)
-            # Wand-Richtung aus Base-Linie ermitteln
             if hasattr(wall, "Base") and wall.Base:
                 wand_start = wall.Base.Shape.Vertexes[0].Point
                 wand_ende = wall.Base.Shape.Vertexes[-1].Point
@@ -422,19 +456,15 @@ class RobustFreeCADBridge:
                 wand_start = App.Vector(0, 0, 0)
                 wand_vektor = App.Vector(1, 0, 0)
 
-            # Normale via Kreuzprodukt (zeigt IMMER nach außen)
             vektor_oben = App.Vector(0, 0, 1)
             wand_normale = wand_vektor.cross(vektor_oben).normalize()
 
-            # makeWindowPreset: Breite=X-Achse, Höhe=Y-Achse, Tiefe=Z-Achse.
-            # Also: X=Wandrichtung (Breite), Y=senkrecht (Höhe), Z=Normale (Tiefe).
             m = App.Matrix()
             m.A11 = wand_vektor.x;   m.A21 = wand_vektor.y;   m.A31 = wand_vektor.z
             m.A12 = vektor_oben.x;   m.A22 = vektor_oben.y;   m.A32 = vektor_oben.z
             m.A13 = wand_normale.x;  m.A23 = wand_normale.y;  m.A33 = wand_normale.z
             rot = App.Rotation(m)
 
-            # 3. Fenster erstellen (an Position 0,0,0)
             doors = ["Simple door", "Glass door"]
             clean_preset = "Fixed" if "fixed" in windowtype.lower() else "Simple door"
             window = Arch.makeWindowPreset(
@@ -443,20 +473,18 @@ class RobustFreeCADBridge:
                 h1=50.0, h2=50.0, h3=50.0, w1=100.0, w2=50.0, o1=0.0, o2=50.0
             )
 
-            # 4. Placement setzen: Position + Rotation
             if windowtype in doors:
                 exakte_position = wand_start + (wand_vektor * dist) + (vektor_oben * (0))
             else:
-                #exakte_position = wand_start + (wand_vektor * dist) + (vektor_oben * (s_val + h_val / 2.0))
-                exakte_position = wand_start + (wand_vektor * dist) + (vektor_oben * (s_val ))
+                exakte_position = wand_start + (wand_vektor * dist) + (vektor_oben * s_val)
             window.Placement = App.Placement(exakte_position, rot)
 
-            # 5. Mit der Wand verknüpfen
             window.Hosts = [wall]
-            
+            window.Label = name
+
             doc.recompute()
             return f"Erfolgreich: Fenster '{window.Label}' in Wand '{wall.Label}' eingebettet."
-            
+
         except Exception as e:
             return f"Fehler in Bridge beim Platzieren: {str(e)}"
 
@@ -824,12 +852,17 @@ class RobustFreeCADBridge:
                 wire.ViewObject.Visibility = False
             fassade = Arch.makeCurtainWall(wire)
             fassade.Label = name
-            if hasattr(fassade, "PanelWidth"):
-                fassade.PanelWidth = self._parse_unit(panel_breite)
-            if hasattr(fassade, "PanelHeight"):
-                fassade.PanelHeight = self._parse_unit(panel_hoehe)
+            # PanelWidth/PanelHeight als persistente Properties
+            pb = self._parse_unit(panel_breite)
+            ph = self._parse_unit(panel_hoehe)
+            if not hasattr(fassade, "PanelWidth"):
+                fassade.addProperty("App::PropertyLength", "PanelWidth", "Arch", "Panel width")
+            fassade.PanelWidth = pb
+            if not hasattr(fassade, "PanelHeight"):
+                fassade.addProperty("App::PropertyLength", "PanelHeight", "Arch", "Panel height")
+            fassade.PanelHeight = ph
             doc.recompute()
-            return f"Vorhangfassade: {fassade.Label}"
+            return f"Vorhangfassade: {fassade.Label} ({fassade.Name})"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -1063,18 +1096,20 @@ class RobustFreeCADBridge:
         try:
             import Arch
             if not App.ActiveDocument: return "Kein aktives Dokument."
-            
-            # Absoluter Pfad
+
             if not os.path.isabs(file_path):
                 file_path = os.path.abspath(file_path)
-            
-            # 1. Versuch: importIFC
+
             try:
                 import importIFC
                 importIFC.export(App.ActiveDocument.Objects, file_path)
                 return f"Exportiert: {file_path}"
-            except Exception:
-                # 2. Versuch: Arch.export
+            except ImportError:
+                try:
+                    import ifcopenshell
+                except ImportError:
+                    return ("Fehler: ifcopenshell nicht installiert. "
+                            "Installiere es über den FreeCAD-Addon-Manager oder via 'pip install ifcopenshell'.")
                 if hasattr(Arch, "export"):
                     Arch.export(App.ActiveDocument.Objects, file_path)
                     return f"Exportiert (via Arch): {file_path}"

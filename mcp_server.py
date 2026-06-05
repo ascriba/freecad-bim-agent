@@ -192,13 +192,14 @@ def add_to_container(object_name: str, container_name: str) -> str:
     except Exception as e: return f"Fehler: {str(e)}"
 
 @mcp.tool()
-def create_slab(length: str = "10m", width: str = "8mm", height: str = "300mm", name: str = "Bodenplatte") -> str:
+def create_slab(length: str = "10m", width: str = "8m", height: str = "300mm", name: str = "Bodenplatte",
+                placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm") -> str:
     """
     Erstellt eine Slab (Bodenplatte).
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_bodenplatte(length, width, height, name)
+        return bridge.erstelle_bodenplatte(length, width, height, name, placement_x, placement_y, placement_z)
     except Exception as e: return f"Fehler: {str(e)}"
 
 
@@ -243,30 +244,32 @@ def create_wall(
         return f"Fehler im MCP-Tool beim Erstellen der Wand: {str(e)}"
 
 @mcp.tool()
-def align_wall(wand_bezeichnung, align="Left"):
+def align_wall(wand_bezeichnung, align="Left", align_to=None):
     """
     Ausrichten einer Wand
 
     Args:
     wand_bezeichnung : Label oder Name der Wand
-    align : zulässig sind "Left", "Center" oder "Right.
+    align : zulässig sind "Left", "Center" oder "Right". Wirkt nur wenn align_to nicht gesetzt ist.
+    align_to : Alternativ zu align: "inside" (zur Gebäudeinnenseite), "outside" (zur Außenseite),
+               "left", "center", "right". Überschreibt align wenn gesetzt.
     """
     try:
         bridge = get_bridge()
-        # Übergabe der Punkte und Maße an deine Bridge
-        return bridge.ausrichten_wand(wand_bezeichnung, align)
+        return bridge.ausrichten_wand(wand_bezeichnung, align, align_to)
     except Exception as e: 
         return f"Fehler im MCP-Tool Wand_ausrichten: {str(e)}"
 
 @mcp.tool()
 def create_window(
-    wall_ident: str = "Wand", 
-    distance_from_start: str = "1.5m", 
-    width: str = "900mm", 
-    height: str = "2000mm", 
-    sill_height: str = "0mm", 
+    wall_ident: str = "Wand",
+    distance_from_start: str = "1.5m",
+    width: str = "900mm",
+    height: str = "2000mm",
+    sill_height: str = "0mm",
     windowtype: str = "Simple door",
-    **kwargs
+    name: str = "Fenster",
+    wall_name: str | None = None
 ) -> str:
     """
     Erstellt ein Fenster oder eine Tür und fügt sie passgenau in eine bestehende Wand ein.
@@ -280,26 +283,26 @@ def create_window(
         windowtype: Der Standard-Typ des Fensters ist 'Fixed', der Standard-Typ für Türen ist 'Simple door'.
         mögliche windowtype sind: "Fixed", "Open 1-pane", "Open 2-pane", "Sash 2-pane",
                   "Sliding 2-pane", "Simple door", "Glass door", "Sliding 4-pane", "Awning"
+        name: Das Label des Fensters in FreeCAD.
+        wall_name: Alternativer Name/Label der Wand (Alias für wall_ident).
     """
     try:
         bridge = get_bridge()
-        
-        # Flexibel abfangen, falls Gemma 'wall_name' statt 'wall_ident' nutzt
-        actual_wall = kwargs.get("wall_name", wall_ident)
-        
-        # HIER DIE KORREKTUR: Übergabe nach Reihenfolge (Positional), 
-        # das verhindert den "unexpected keyword argument"-Fehler vollständig!
+
+        actual_wall = wall_name if wall_name else wall_ident
+
         result = bridge.fuege_fenster_ein(
-            actual_wall, 
-            distance_from_start, 
-            width, 
-            height, 
-            sill_height, 
-            windowtype
+            actual_wall,
+            distance_from_start,
+            width,
+            height,
+            sill_height,
+            windowtype,
+            name
         )
         return result
-        
-    except Exception as e: 
+
+    except Exception as e:
         return f"Fehler im MCP-Tool create_window() beim Erstellen: {str(e)}"
 
 @mcp.tool()
