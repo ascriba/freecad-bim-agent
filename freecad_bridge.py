@@ -13,6 +13,8 @@ import queue
 # --- Konfiguration ---
 PORT = 8000
 HOST = "localhost"
+ALLOWED_EXPORT_DIR = os.getcwd()
+AUDIT_LOG = []  # In-Memory Audit-Log für sicherheitskritische Aktionen
 
 # Globaler Thread-sicherer Request-Queue
 request_queue = queue.Queue()
@@ -88,6 +90,25 @@ class RobustFreeCADBridge:
         obj = App.ActiveDocument.getObject(name_or_label)
         return obj if obj else next((o for o in App.ActiveDocument.Objects if o.Label == name_or_label), None)
 
+    def _sanitize_path(self, user_path):
+        """Stellt sicher, dass der Pfad innerhalb des erlaubten Export-Verzeichnisses bleibt."""
+        if not os.path.isabs(user_path):
+            user_path = os.path.abspath(user_path)
+        resolved = os.path.realpath(user_path)
+        allowed = os.path.realpath(ALLOWED_EXPORT_DIR)
+        if not resolved.startswith(allowed + os.sep) and resolved != allowed:
+            raise PermissionError(f"Zugriff verweigert: {resolved} liegt nicht im erlaubten Bereich ({allowed})")
+        return resolved
+
+    def _audit(self, action, detail):
+        """Hängt einen Eintrag ans Audit-Log."""
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        AUDIT_LOG.append(f"[{ts}] {action}: {detail}")
+        try:
+            App.Console.PrintMessage(f"[AUDIT] {action}: {detail}\n")
+        except:
+            pass
+
     # def to_vector(self, p):
     #     try:
     #         if hasattr(p, "x"): return p
@@ -142,15 +163,16 @@ class RobustFreeCADBridge:
             view = FreeCADGui.ActiveDocument.ActiveView
             if not view: return "Fehler: Keine Ansicht."
             
-            # Absoluter Pfad im Arbeitsverzeichnis
-            full_path = os.path.abspath(filename)
+            safe_path = self._sanitize_path(filename)
             view.fitAll()
-            view.saveImage(full_path, 1280, 720, "White")
+            view.saveImage(safe_path, 1280, 720, "White")
             
-            if os.path.exists(full_path):
-                with open(full_path, "rb") as f:
+            if os.path.exists(safe_path):
+                with open(safe_path, "rb") as f:
                     return base64.b64encode(f.read()).decode('utf-8')
             return "Fehler: Bild wurde nicht gespeichert."
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e: return f"Fehler: {str(e)}"
 
     def liste_objekte(self):
@@ -176,6 +198,7 @@ class RobustFreeCADBridge:
         try:
             obj = self._get_obj(name)
             if not obj: return "Nicht gefunden."
+            self._audit("DELETE", f"Objekt '{obj.Label}' ({obj.Name}, {obj.TypeId})")
             App.ActiveDocument.removeObject(obj.Name)
             App.ActiveDocument.recompute()
             return f"Gelöscht: {name}"
@@ -756,14 +779,16 @@ class RobustFreeCADBridge:
     def importiere_dxf(self, dateipfad):
         try:
             import importDXF
-            if not os.path.isabs(dateipfad):
-                dateipfad = os.path.abspath(dateipfad)
-            if not os.path.exists(dateipfad):
-                return f"Fehler: Datei nicht gefunden: {dateipfad}"
+            safe_path = self._sanitize_path(dateipfad)
+            self._audit("IMPORT", f"DXF von {safe_path}")
+            if not os.path.exists(safe_path):
+                return "Fehler: Datei nicht gefunden."
             doc = App.ActiveDocument or App.newDocument("BIM")
-            importDXF.importDXF(dateipfad, doc)
+            importDXF.importDXF(safe_path, doc)
             doc.recompute()
-            return f"DXF importiert: {dateipfad}"
+            return f"DXF importiert: {os.path.basename(safe_path)}"
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -771,12 +796,13 @@ class RobustFreeCADBridge:
         try:
             import importDXF
             doc = App.ActiveDocument
-            if not doc:
-                return "Fehler: Kein aktives Dokument."
-            if not os.path.isabs(dateipfad):
-                dateipfad = os.path.abspath(dateipfad)
-            importDXF.export(doc.Objects, dateipfad)
-            return f"DXF exportiert: {dateipfad}"
+            if not doc: return "Fehler: Kein aktives Dokument."
+            safe_path = self._sanitize_path(dateipfad)
+            self._audit("EXPORT", f"DXF nach {safe_path}")
+            importDXF.export(doc.Objects, safe_path)
+            return f"DXF exportiert: {os.path.basename(safe_path)}"
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -784,15 +810,15 @@ class RobustFreeCADBridge:
         try:
             import FreeCADGui
             doc = App.ActiveDocument
-            if not doc:
-                return "Fehler: Kein aktives Dokument."
+            if not doc: return "Fehler: Kein aktives Dokument."
             gui_doc = FreeCADGui.ActiveDocument
-            if not gui_doc:
-                return "Fehler: Kein GUI-Dokument (keine Seiten vorhanden?)."
-            if not os.path.isabs(dateipfad):
-                dateipfad = os.path.abspath(dateipfad)
-            gui_doc.exportPage(dateipfad)
-            return f"PDF exportiert: {dateipfad}"
+            if not gui_doc: return "Fehler: Kein GUI-Dokument (keine Seiten vorhanden?)."
+            safe_path = self._sanitize_path(dateipfad)
+            self._audit("EXPORT", f"PDF nach {safe_path}")
+            gui_doc.exportPage(safe_path)
+            return f"PDF exportiert: {os.path.basename(safe_path)}"
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -800,12 +826,13 @@ class RobustFreeCADBridge:
         try:
             import importSVG
             doc = App.ActiveDocument
-            if not doc:
-                return "Fehler: Kein aktives Dokument."
-            if not os.path.isabs(dateipfad):
-                dateipfad = os.path.abspath(dateipfad)
-            importSVG.export(doc.Objects, dateipfad)
-            return f"SVG exportiert: {dateipfad}"
+            if not doc: return "Fehler: Kein aktives Dokument."
+            safe_path = self._sanitize_path(dateipfad)
+            self._audit("EXPORT", f"SVG nach {safe_path}")
+            importSVG.export(doc.Objects, safe_path)
+            return f"SVG exportiert: {os.path.basename(safe_path)}"
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -1096,14 +1123,12 @@ class RobustFreeCADBridge:
         try:
             import Arch
             if not App.ActiveDocument: return "Kein aktives Dokument."
-
-            if not os.path.isabs(file_path):
-                file_path = os.path.abspath(file_path)
-
+            safe_path = self._sanitize_path(file_path)
+            self._audit("EXPORT", f"IFC nach {safe_path}")
             try:
                 import importIFC
-                importIFC.export(App.ActiveDocument.Objects, file_path)
-                return f"Exportiert: {file_path}"
+                importIFC.export(App.ActiveDocument.Objects, safe_path)
+                return f"Exportiert: {os.path.basename(safe_path)}"
             except ImportError:
                 try:
                     import ifcopenshell
@@ -1111,24 +1136,27 @@ class RobustFreeCADBridge:
                     return ("Fehler: ifcopenshell nicht installiert. "
                             "Installiere es über den FreeCAD-Addon-Manager oder via 'pip install ifcopenshell'.")
                 if hasattr(Arch, "export"):
-                    Arch.export(App.ActiveDocument.Objects, file_path)
-                    return f"Exportiert (via Arch): {file_path}"
+                    Arch.export(App.ActiveDocument.Objects, safe_path)
+                    return f"Exportiert (via Arch): {os.path.basename(safe_path)}"
                 return "Fehler: Export-Modul nicht gefunden."
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e: return f"Fehler: {str(e)}"
 
     def analysiere_ifc(self, file_path):
         try:
-            if not os.path.isabs(file_path):
-                file_path = os.path.abspath(file_path)
-            if not os.path.exists(file_path):
-                return f"Fehler: Datei nicht gefunden: {file_path}"
-                
+            safe_path = self._sanitize_path(file_path)
+            self._audit("ANALYZE", f"IFC von {safe_path}")
+            if not os.path.exists(safe_path):
+                return "Fehler: Datei nicht gefunden."
             import ifcopenshell
-            f = ifcopenshell.open(file_path)
+            f = ifcopenshell.open(safe_path)
             res = f"Projekt: {f.by_type('IfcProject')[0].Name if f.by_type('IfcProject') else '?'}\n"
             counts = {}
             for e in f.by_type("IfcRoot"): counts[e.is_a()] = counts.get(e.is_a(), 0) + 1
             return res + "\n".join([f"- {k}: {v}" for k, v in sorted(counts.items())])
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
         except Exception as e: return f"Fehler: {str(e)}"
 
 
@@ -1429,11 +1457,14 @@ class RobustFreeCADBridge:
         try:
             import FreeCADGui as Gui
             import io, sys
+            # Sicherheit: `os` bewusst nicht im Namespace — exec-Zugriff auf Systembefehle unterbunden
+            restricted_globals = {"App": App, "Part": Part, "Gui": Gui, "FreeCAD": App, "time": time}
+            self._audit("EXECUTE_PYTHON", f"Skript ({len(script)} Zeichen): {script[:200]}")
             stdout_capture = io.StringIO()
             old_stdout = sys.stdout
             sys.stdout = stdout_capture
             try:
-                exec(script, {"App": App, "Part": Part, "Gui": Gui, "os": os, "time": time, "FreeCAD": App})
+                exec(script, restricted_globals)
                 if App.ActiveDocument: App.ActiveDocument.recompute()
             finally:
                 sys.stdout = old_stdout

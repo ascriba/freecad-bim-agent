@@ -156,6 +156,28 @@ The `.agents/skills/freecad-scripts/SKILL.md` skill provides comprehensive FreeC
 - IFC export prefers `importIFC.export()`, falls back to `Arch.export()`.
 - IFC analysis requires `ifcopenshell` inside FreeCAD.
 
+## Sicherheitshinweise
+
+### Kritisch: `execute_python`
+
+`execute_python` ist ein **ungefiltertes RCE-Tool** (`exec()` in FreeCAD). Auch nach Entfernen von `os` aus dem Namespace kann Code-Escaping nicht verhindert werden. **Jede Ausführung wird geloggt.**
+
+- Das Tool ist bewusst als "Escape Hatch" für nicht-abgedeckte FreeCAD-Operationen gedacht
+- Das `os`-Modul wurde aus dem exec-Namespace entfernt
+- Jeder Aufruf wird ins Audit-Log geschrieben und in der FreeCAD-Konsole ausgegeben
+- Nutzung nur durch vertrauenswürdige LLM-Prompts
+
+### Path Traversal Schutz
+
+Import/Export-Tools (`import_dxf`, `export_dxf`, `export_pdf`, `export_svg`, `export_ifc`, `analyze_ifc`, `capture_view`) verwenden `_sanitize_path()`:
+- Pfad wird via `os.path.realpath()` aufgelöst (eliminiert `..`-Traversal)
+- Zugriff nur innerhalb von `ALLOWED_EXPORT_DIR` (dem Arbeitsverzeichnis) erlaubt
+- `PermissionError` bei unerlaubten Pfaden — kein Leaken des tatsächlichen Pfads in der Fehlermeldung
+
+### Audit-Log
+
+Sicherheitskritische Aktionen werden geloggt: `DELETE`, `EXPORT`, `IMPORT`, `ANALYZE`, `EXECUTE_PYTHON`. Das Log erscheint in der FreeCAD-Konsole und im In-Memory-Audit-Log.
+
 ## Hot-Reload (Bridge-Code aktualisieren)
 
 Nach Änderungen an `freecad_bridge.py`:
