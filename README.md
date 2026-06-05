@@ -193,6 +193,10 @@ Sicherste Methode: FreeCAD + Bridge neustarten nach Code-Änderungen.
 - `create_stairs` erfordert FreeCAD ≥ 0.19
 - `create_2d_view` erfordert TechDraw-Workbench
 
+## Haftungsausschluss
+
+Der hier bereitgestellte Code wird "wie besehen" und ohne jegliche ausdrückliche oder stillschweigende Gewährleistung zur Verfügung gestellt. Der Autor übernimmt keine Haftung für direkte, indirekte oder Folgeschäden, Datenverluste oder finanzielle Einbußen, die durch die Nutzung oder fehlerhafte Funktion dieses Codes entstehen. Die Nutzung erfolgt auf eigenes Risiko.
+
 ## Lizenz
 
 MIT
