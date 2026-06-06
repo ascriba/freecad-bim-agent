@@ -1,4 +1,4 @@
-# **FreeCAD Model Context Protocol (MCP) Server**
+# **freecad-bim-agent** — FreeCAD MCP Server
 
 Dieses Repository enthält einen **Model Context Protocol (MCP)** Server, der eine nahtlose Brücke zwischen KI-Modellen (LLMs) und **FreeCAD** schlägt. Der Server basiert auf dem FastMCP-Framework und ermöglicht es KI-Assistenten, komplexe 3D-Modelle, parametrische Bauteile und vollständige **BIM-Strukturen (Building Information Modeling)** direkt in FreeCAD zu generieren, zu modifizieren, zu analysieren und visuell zu überprüfen.  
 Der MCP-Server wurde speziell dafür entwickelt, nativ in **Coding-Agents** eingebunden zu werden, um autonome, KI-gesteuerte CAD- und BIM-Workflows zu ermöglichen. Die Funktion und Integration wurde erfolgreich mit [**OpenCode**](https://opencode.ai/) getestet.  
@@ -79,8 +79,8 @@ Füge den Server zu deiner MCP-Konfigurationsdatei des jeweiligen Agents hinzu:
     "FreeCAD": {
       "type": "local",
       "command": [
-        "/pfad/zu/deinem/repository/.venv/bin/python3",
-        "/pfad/zu/deinem/repository/mcp_server.py"
+        "/pfad/zu/freecad-bim-agent/.venv/bin/python3",
+        "/pfad/zu/freecad-bim-agent/mcp_server.py"
       ],
       "enabled": true
     }
