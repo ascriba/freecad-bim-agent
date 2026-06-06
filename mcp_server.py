@@ -95,21 +95,21 @@ def rotate_object(name: str, axis: str = "Z", angle: float = 45.0) -> str:
         return f"Fehler: {str(e)}"
 
 @mcp.tool()
-def capture_view() -> Image:
+def capture_view(view_type: str = "iso") -> Image:
     """
     Erstellt einen Screenshot der aktuellen 3D-Ansicht in FreeCAD.
     Ermöglicht dem Modell, das Ergebnis visuell zu prüfen.
+    
+    Args:
+        view_type: "iso", "top", "front", oder "right".
     """
     try:
         bridge = get_bridge()
-        base64_data = bridge.capture_view()
+        base64_data = bridge.capture_view("freecad_view.png", view_type)
         
         if base64_data.startswith("Fehler"):
-            # Wir geben einen Fehler-String zurück, falls etwas schief geht
-            # FastMCP wandelt das passend um.
             raise Exception(base64_data)
             
-        # Base64 zu Bytes für den MCP-Image-Typ umwandeln
         img_bytes = base64.b64decode(base64_data)
         return Image(data=img_bytes, format="png")
     except Exception as e:
@@ -189,6 +189,20 @@ def add_to_container(object_name: str, container_name: str) -> str:
     try:
         bridge = get_bridge()
         return bridge.fuege_zu_container_hinzu(object_name, container_name)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def add_to_container_batch(object_names: list[str], container_name: str) -> str:
+    """
+    Fügt mehrere Objekte auf einmal zu einem Container hinzu.
+    
+    Args:
+        object_names: Liste von Namen/Labeln der Objekte.
+        container_name: Name/Label des Containers (z.B. "Erdgeschoss").
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.fuege_mehrere_zu_container_hinzu(object_names, container_name)
     except Exception as e: return f"Fehler: {str(e)}"
 
 @mcp.tool()
@@ -399,6 +413,22 @@ def set_material(object_name: str, material_name: str, color_rgb: str = "(0.8, 0
     except Exception as e: return f"Fehler: {str(e)}"
 
 @mcp.tool()
+def set_material_batch(object_names: list[str], material_name: str, color_rgb: str = "(0.8, 0.8, 0.8)") -> str:
+    """
+    Weist mehreren Objekten auf einmal ein Material zu.
+    
+    Args:
+        object_names: Liste von Namen/Labeln der Objekte.
+        material_name: Name des Materials.
+        color_rgb: Farbe als String "(R, G, B)" mit Werten 0.0 bis 1.0.
+    """
+    try:
+        bridge = get_bridge()
+        rgb_tuple = tuple(map(float, color_rgb.strip("()").split(",")))
+        return bridge.setze_material_mehrere(object_names, material_name, rgb_tuple)
+    except Exception as e: return f"Fehler: {str(e)}"
+
+@mcp.tool()
 def get_quantities(object_name: str) -> str:
     """
     Ermittelt mengenbezogene Informationen (Fläche, Volumen, etc.) eines FreeCAD-Objekts.
@@ -421,13 +451,17 @@ def add_to_wall(wall_name: str, component_name: str) -> str:
         return f"Fehler: {str(e)}"
 
 @mcp.tool()
-def create_structure(length: str = "100mm", width: str = "20mm", height: str = "20mm", name: str = "Balken") -> str:
+def create_structure(length: str = "100mm", width: str = "20mm", height: str = "20mm", name: str = "Balken",
+                    position_x: float | None = None,
+                    position_y: float | None = None,
+                    position_z: float | None = None) -> str:
     """
     Erstellt ein Tragwerk-Element (Arch Structure) wie einen Balken oder eine Säule. Unterstützt Einheiten.
+    Optionale position_x/y/z setzen die Position in METERN.
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_struktur(length, width, height, name)
+        return bridge.erstelle_struktur(length, width, height, name, position_x, position_y, position_z)
     except Exception as e:
         return f"Fehler: {str(e)}"
 
@@ -522,6 +556,21 @@ def create_stairs(
         return bridge.erstelle_treppe(length, width, height, steps_count, stringer_thickness, name)
     except Exception as e:
         return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def create_axes(axes: list[dict]) -> str:
+    """
+    Erstellt mehrere Bauachsen auf einmal.
+    
+    Args:
+        axes: Liste von Dicts mit label, x, y, z, direction.
+               Z.B. [{"label": "1", "x": "0mm", "y": "0mm", "direction": "Y"},
+                      {"label": "2", "x": "5000mm", "y": "0mm", "direction": "Y"}]
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_mehrere_achsen(axes)
+    except Exception as e: return f"Fehler: {str(e)}"
 
 @mcp.tool()
 def create_axis(
