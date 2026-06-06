@@ -1,12 +1,33 @@
+# Virtuelle Python-Umgebung (Wichtig!)
+.venv/
+
+# Python Bytecode und Cache
 __pycache__/
 *.pyc
 *.pyo
+
+# Konfigurationen & Geheimnisse (z.B. API-Schlüssel)
 .env
+
+# FreeCAD Dateien und automatische Backups
 *.FCStd
 *.FCBak
+
+# Exportierte CAD-, Vektor- und BIM-Daten
 *.ifc
 *.png
 *.pdf
 *.svg
 *.dxf
+
+# Temporäre Markdown-Sitzungsprotokolle
 session-*.md
+
+# Planungs- und Spezifikationsdokumente (nicht für git)
+docs/superpowers/
+
+# OpenCode Agenten-Konfiguration
+AGENTS.md
+
+# Standard-README wird nicht getrackt (eigenes Format)
+README.md
