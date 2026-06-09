@@ -164,7 +164,10 @@ def create_site(name: str = "ProjektGelaende") -> str:
 @mcp.tool()
 def create_building(name: str = "MeinHaus") -> str:
     """
-    Erstellt ein Gebäude (Arch Building).
+    Erstellt ein Gebäude (Arch Building). Ein Gebäude ist ein spezielles 
+    FreeCAD-Gruppenobjekt, das sich besonders dafür eignet, 
+    eine ganze Gebäudeeinheit zu repräsentieren. 
+    Es wird durch enthaltene Stockwerk-Objekte zur Organisation des Modells eingesetzt.
     """
     try:
         bridge = get_bridge()
@@ -209,7 +212,8 @@ def add_to_container_batch(object_names: list[str], container_name: str) -> str:
 def create_slab(length: str = "10m", width: str = "8m", height: str = "300mm", name: str = "Bodenplatte",
                 placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm") -> str:
     """
-    Erstellt eine Slab (Bodenplatte).
+    Erstellt eine Slab (Bodenplatte). 
+    Die Slab wird immer in Richtung -z (nach unten) extrudiert!
     """
     try:
         bridge = get_bridge()
@@ -242,6 +246,9 @@ def create_wall(
 ) -> str:
     """
     Erstellt eine gerade Wand (Arch Wall) zwischen zwei 3D-Punkten.
+    Die Wand wird immer mit der Ausrichtung (align) "center" 
+    auf der Baseline errichtet.
+    
 
     Args:
         p1: Startpunkt als [X, Y, Z] Koordinate in METERN (z.B. [0, 0, 0]).
@@ -1195,6 +1202,71 @@ def validate_ifc_export() -> str:
         bridge = get_bridge()
         return bridge.validiere_ifc_export()
     except Exception as e: return f"Fehler: {str(e)}"
+
+# --- Space / Raum ---
+@mcp.tool()
+def create_space(
+    base_object: str | None = None,
+    name: str = "Raum"
+) -> str:
+    """
+    Erstellt einen Raum (Arch Space).
+    Das Volumen wird entweder von einem bestehenden Festkörper (base_object) abgeleitet
+    oder als leeres Volumen angelegt. Begrenzungsflächen können separat mit 
+    add_space_boundary hinzugefügt werden.
+
+    Args:
+        base_object: Optionaler Name/Label eines Festkörpers (Part-Objekt) als Basis.
+        name: Label des Raums in FreeCAD.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_raum(base_object, name)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def add_space_boundary(
+    space_name: str,
+    object_name: str,
+    faces: list[str] | None = None
+) -> str:
+    """
+    Fügt einem Raum Begrenzungsflächen hinzu.
+    Der Raum wird so beschnitten, dass er nur bis zu diesen Flächen reicht.
+
+    Args:
+        space_name: Name oder Label des Raums.
+        object_name: Name oder Label des Objekts mit den Begrenzungsflächen.
+        faces: Optional Liste von Face-Namen (z.B. ["Face1", "Face3"]).
+               Standardmäßig werden alle Faces des Objekts verwendet.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.raum_grenze_hinzufuegen(space_name, object_name, faces)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+@mcp.tool()
+def remove_space_boundary(
+    space_name: str,
+    object_name: str,
+    faces: list[str] | None = None
+) -> str:
+    """
+    Entfernt Begrenzungsflächen von einem Raum.
+
+    Args:
+        space_name: Name oder Label des Raums.
+        object_name: Name oder Label des Objekts mit den zu entfernenden Begrenzungsflächen.
+        faces: Optional Liste von Face-Namen (z.B. ["Face1", "Face3"]).
+               Standardmäßig werden alle Faces des Objekts entfernt.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.raum_grenze_entfernen(space_name, object_name, faces)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
 
 if __name__ == "__main__":
     # Startet den MCP-Server

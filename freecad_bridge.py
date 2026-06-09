@@ -1543,7 +1543,66 @@ class RobustFreeCADBridge:
             return "IFC-Export bereit."
         except Exception as e: return f"Fehler: {str(e)}"
 
+    # --- Space / Raum ---
+    def erstelle_raum(self, base_object=None, name="Raum"):
+        try:
+            import Arch
+            doc = App.ActiveDocument or App.newDocument("BIM")
+            if base_object:
+                base = self._get_obj(base_object)
+                if not base:
+                    return f"Fehler: Objekt '{base_object}' nicht gefunden."
+                space = Arch.makeSpace(baseobj=base, name=name)
+            else:
+                space = Arch.makeSpace(name=name)
+            doc.recompute()
+            return f"Raum: {space.Label} ({space.Name})"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def _build_selection(self, obj, sub_elements=None):
+        """Baut eine Liste von (object, subname)-Tupeln für add/removeSpaceBoundaries."""
+        if sub_elements:
+            return [(obj, s) for s in sub_elements]
+        if hasattr(obj, "Shape") and obj.Shape and hasattr(obj.Shape, "Faces"):
+            return [(obj, f"Face{i+1}") for i in range(len(obj.Shape.Faces))]
+        return []
+
+    def raum_grenze_hinzufuegen(self, space_name, object_name, sub_elements=None):
+        try:
+            import Arch
+            space = self._get_obj(space_name)
+            obj = self._get_obj(object_name)
+            if not space or not obj:
+                return "Fehler: Space oder Objekt nicht gefunden."
+            selection = self._build_selection(obj, sub_elements)
+            if not selection:
+                return "Fehler: Keine Faces gefunden."
+            Arch.addSpaceBoundaries(space, selection)
+            App.ActiveDocument.recompute()
+            return f"Grenzen hinzugefügt: {len(selection)} Faces von '{obj.Label}' an '{space.Label}'"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def raum_grenze_entfernen(self, space_name, object_name, sub_elements=None):
+        try:
+            import Arch
+            space = self._get_obj(space_name)
+            obj = self._get_obj(object_name)
+            if not space or not obj:
+                return "Fehler: Space oder Objekt nicht gefunden."
+            selection = self._build_selection(obj, sub_elements)
+            if not selection:
+                return "Fehler: Keine Faces gefunden."
+            Arch.removeSpaceBoundaries(space, selection)
+            App.ActiveDocument.recompute()
+            return f"Grenzen entfernt: {len(selection)} Faces von '{obj.Label}' von '{space.Label}'"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
     def run_python(self, script):
+        if not getattr(self, '_execute_python_erlaubt', False):
+            return "Fehler: execute_python ist deaktiviert. FreeCAD neustarten und beim Bridge-Start aktivieren."
         try:
             import FreeCADGui as Gui
             import io, sys, traceback
@@ -1585,6 +1644,37 @@ def start_bridge():
             return
     server = xmlrpc.server.SimpleXMLRPCServer((HOST, PORT), allow_none=True, logRequests=False)
     bridge = RobustFreeCADBridge()
+    # Sicherheitsabfrage für execute_python (RCE)
+    bridge._execute_python_erlaubt = False
+    try:
+        from PySide6.QtWidgets import QMessageBox
+    except ImportError:
+        try:
+            from PySide2.QtWidgets import QMessageBox
+        except ImportError:
+            QMessageBox = None
+    if QMessageBox:
+        msg = QMessageBox()
+        msg.setWindowTitle("Sicherheitsabfrage")
+        msg.setText("„execute_python“ (RCE) aktivieren?")
+        msg.setInformativeText(
+            "Das Tool „execute_python“ führt beliebigen Python-Code "
+            "in FreeCAD aus.\n"
+            "Nur aktivieren, wenn du dem LLM vertraust."
+        )
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.No)
+        msg.setIcon(QMessageBox.Warning)
+        dialog_exec = getattr(msg, 'exec', getattr(msg, 'exec_', None))
+        bridge._execute_python_erlaubt = (dialog_exec() == QMessageBox.Yes)
+    else:
+        try:
+            antwort = input("execute_python (RCE) aktivieren? (y/N): ")
+            bridge._execute_python_erlaubt = antwort.strip().lower() == "y"
+        except:
+            pass
+    status = "AKTIVIERT" if bridge._execute_python_erlaubt else "DEAKTIVIERT"
+    print(f"--- execute_python {status} ---")
     server.register_instance(bridge)
     _server_instance = server
     _bridge_instance = bridge
