@@ -11,11 +11,11 @@ Communication with FreeCAD happens via an XML-RPC interface (FreeCAD Bridge) tha
 The server acts as a translator between the standardized MCP protocol and the FreeCAD API:
 
 ```mermaid
-graph TD
-    Agent[Coding-Agent <br> e.g. OpenCode]
-    Server[mcp_server.py <br> FastMCP Server]
-    Bridge[FreeCAD-Bridge <br> XML-RPC Server]
-    FC[FreeCAD Core <br> Python Runtime]
+graph TD;
+    Agent[Coding-Agent <br> e.g. OpenCode];
+    Server[mcp_server.py <br> FastMCP Server];
+    Bridge[FreeCAD-Bridge <br> XML-RPC Server];
+    FC[FreeCAD Core <br> Python Runtime];
 
     Agent -- "MCP JSON-RPC" --> Server
     Server -- "High-Level Tools <br> (e.g. create_wall)" --> Bridge
