@@ -17,15 +17,15 @@ graph TD;
     Bridge[FreeCAD-Bridge <br> XML-RPC Server];
     FC[FreeCAD Core <br> Python Runtime];
 
-    Agent -- "MCP JSON-RPC" --> Server
-    Server -- "High-Level Tools <br> (e.g. create_wall)" --> Bridge
-    Bridge -- "XML-RPC <br> (localhost:8000)" --> FC
+    Agent -- "MCP JSON-RPC" --> Server;
+    Server -- "High-Level Tools <br> (e.g. create_wall)" --> Bridge;
+    Bridge -- "XML-RPC <br> (localhost:8000)" --> FC;
 
-    style Agent fill:#1f77b4,stroke:#115588,stroke-width:2px,color:#fff
-    style Server fill:#2ca02c,stroke:#1e6b1e,stroke-width:2px,color:#fff
-    style Bridge fill:#ff7f0e,stroke:#cc5200,stroke-width:2px,color:#fff
-    style FC fill:#d62728,stroke:#991b1b,stroke-width:2px,color:#fff
-   ```
+    style Agent fill:#1f77b4,stroke:#115588,stroke-width:2px,color:#fff;
+    style Server fill:#2ca02c,stroke:#1e6b1e,stroke-width:2px,color:#fff;
+    style Bridge fill:#ff7f0e,stroke:#cc5200,stroke-width:2px,color:#fff;
+    style FC fill:#d62728,stroke:#991b1b,stroke-width:2px,color:#fff;
+```
 
 ## **Features & Capabilities**
 
