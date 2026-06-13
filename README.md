@@ -142,9 +142,9 @@ The server registers a wide range of tools. Below is a structured overview of al
 
 | Tool | Arguments | Description |
 | :---- | :---- | :---- |
-| create\_axis | x, y, z, direction (X/Y/Z), label | Creates a single building axis. |
-| create\_axes | axes (List\[Dict\]) | Batch creation of multiple building axes in one call. |
-| create\_axis\_system | axes (List\[Str\]), name | Groups multiple axes into an axis system. |
+| create\_axis | count, spacing, length, for\_building, building\_pad, x, y, z, rotation, numbering\_style, bubble\_size, font\_size, line\_width, bubble\_position, show\_labels, font\_name, name | Creates parallel building axes (Arch Axis) with full View-Property access. Auto-length via building BBox when for\_building is set. |
+| create\_axes | axes (List\[Dict\]) | Batch creation — each dict supports all create\_axis parameters. |
+| create\_axis\_system | axes (List\[Str\]), name | Groups multiple axes into an orthogonal axis system. |
 | create\_section\_plane | x, y, z, direction, name | Creates a section plane for floor plans and views. |
 
 ### **5\. MEP & Special Structures**

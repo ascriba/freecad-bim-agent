@@ -600,49 +600,103 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_achse(self, x="0mm", y="0mm", z="0mm", richtung="Z", label="1"):
+    def erstelle_achse(self, anzahl="5", abstand="5000mm", laenge="14000mm",
+                       bauwerk_name=None, bauwerk_ueberstand="2.0",
+                       x="0mm", y="0mm", z="0mm", drehung="0.0",
+                       nummerierung="1,2,3", blasen_groesse="200",
+                       schrift_groesse="150", linien_breite="2",
+                       blasen_position="Left", labels_anzeigen="True",
+                       schrift_art="", name="Achsen"):
         try:
             import Arch
             doc = App.ActiveDocument or App.newDocument("BIM")
-            achse = Arch.makeAxis(1, 10000)
-            achse.Label = f"Achse_{label}"
-            achse.Placement.Base = App.Vector(self._parse_unit(x), self._parse_unit(y), self._parse_unit(z))
-            if richtung.upper() == "X":
-                achse.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), -90)
-            elif richtung.upper() == "Y":
-                achse.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), 0)
-            else:
-                achse.Placement.Rotation = App.Rotation(App.Vector(1, 0, 0), 90)
-            if hasattr(achse, "Labels"):
-                achse.Labels = [label]
+
+            anzahl_int = int(anzahl)
+            if anzahl_int < 1:
+                anzahl_int = 1
+            abstand_mm = self._parse_unit(abstand)
+            achse = Arch.makeAxis(anzahl_int, abstand_mm)
+            achse.Label = name
+
+            # Auto-Länge via Gebäude-Bounding-Box
+            laenge_mm = self._parse_unit(laenge)
+            if bauwerk_name:
+                bau = self._get_obj(bauwerk_name)
+                if bau and hasattr(bau, "Shape"):
+                    try:
+                        if bau.Shape and bau.Shape.isValid():
+                            bbox = bau.Shape.BoundBox
+                            max_dim_mm = max(bbox.XLength, bbox.YLength)
+                            laenge_mm = max_dim_mm + float(bauwerk_ueberstand) * 2000.0
+                    except Exception:
+                        pass
+                if laenge_mm == self._parse_unit(laenge) and hasattr(bau, "Group"):
+                    max_dim_mm = 0.0
+                    for child in bau.Group:
+                        try:
+                            if hasattr(child, "Shape") and child.Shape and child.Shape.isValid():
+                                bb = child.Shape.BoundBox
+                                max_dim_mm = max(max_dim_mm, bb.XLength, bb.YLength)
+                        except Exception:
+                            continue
+                    if max_dim_mm > 0:
+                        laenge_mm = max_dim_mm + float(bauwerk_ueberstand) * 2000.0
+            achse.Length = laenge_mm
+
+            if hasattr(achse, "ViewObject"):
+                achse.ViewObject.BubbleSize = int(blasen_groesse)
+                achse.ViewObject.FontSize = int(schrift_groesse)
+                achse.ViewObject.LineWidth = int(linien_breite)
+                g_enum = achse.ViewObject.getEnumerationsOfProperty('NumberingStyle')
+                if nummerierung not in g_enum:
+                    nummerierung = '1,2,3'
+                achse.ViewObject.NumberingStyle = nummerierung
+                bp_map = {"Left": 0, "Right": 1, "Both": 2, "None": 3,
+                          "Arrow Left/Right": 4, "Bar Left/Right": 5}
+                achse.ViewObject.BubblePosition = bp_map.get(blasen_position, 0)
+                if isinstance(labels_anzeigen, str):
+                    achse.ViewObject.ShowLabel = labels_anzeigen.lower() in ("true", "1", "yes")
+                else:
+                    achse.ViewObject.ShowLabel = bool(labels_anzeigen)
+                if schrift_art:
+                    achse.ViewObject.FontName = schrift_art
+
+            achse.Placement.Base = App.Vector(
+                self._parse_unit(x), self._parse_unit(y), self._parse_unit(z)
+            )
+
+            if abs(float(drehung)) > 0.001:
+                achse.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), float(drehung))
+
             doc.recompute()
-            return f"Achse: {achse.Label}"
+            return f"Achsen: {achse.Label}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
     def erstelle_mehrere_achsen(self, achsen_liste):
-        try:
-            import Arch
-            doc = App.ActiveDocument or App.newDocument("BIM")
-            created = []
-            for a in achsen_liste:
-                label = a.get("label", "?")
-                x = a.get("x", "0mm"); y = a.get("y", "0mm"); z = a.get("z", "0mm")
-                richtung = a.get("direction", "Z")
-                achse = Arch.makeAxis(1, 10000)
-                achse.Label = f"Achse_{label}"
-                achse.Placement.Base = App.Vector(self._parse_unit(x), self._parse_unit(y), self._parse_unit(z))
-                if richtung.upper() == "X":
-                    achse.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), -90)
-                elif richtung.upper() == "Y":
-                    achse.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), 0)
-                else:
-                    achse.Placement.Rotation = App.Rotation(App.Vector(1, 0, 0), 90)
-                if hasattr(achse, "Labels"): achse.Labels = [label]
-                created.append(achse.Label)
-            doc.recompute()
-            return f"Achsen erstellt: {', '.join(created)}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        created = []
+        for a in achsen_liste:
+            r = self.erstelle_achse(
+                anzahl=str(a.get("count", a.get("anzahl", "1"))),
+                abstand=str(a.get("spacing", a.get("abstand", "5000mm"))),
+                laenge=str(a.get("length", a.get("laenge", "14000mm"))),
+                bauwerk_name=a.get("for_building", a.get("bauwerk_name", None)),
+                bauwerk_ueberstand=str(a.get("building_pad", a.get("bauwerk_ueberstand", "2.0"))),
+                x=str(a.get("x", "0mm")),
+                y=str(a.get("y", "0mm")),
+                z=str(a.get("z", "0mm")),
+                drehung=str(a.get("rotation", a.get("drehung", "0.0"))),
+                nummerierung=str(a.get("numbering_style", a.get("nummerierung", "1,2,3"))),
+                blasen_groesse=str(a.get("bubble_size", a.get("blasen_groesse", "200"))),
+                schrift_groesse=str(a.get("font_size", a.get("schrift_groesse", "150"))),
+                linien_breite=str(a.get("line_width", a.get("linien_breite", "2"))),
+                blasen_position=str(a.get("bubble_position", a.get("blasen_position", "Left"))),
+                labels_anzeigen=str(a.get("show_labels", a.get("labels_anzeigen", "True"))),
+                schrift_art=str(a.get("font_name", a.get("schrift_art", ""))),
+                name=str(a.get("name", a.get("label", "Achse"))),
+            )
+            created.append(r)
+        return "; ".join(created)
 
     def erstelle_achsensystem(self, achsen_liste, name="Achsensystem"):
         try:
@@ -652,9 +706,11 @@ class RobustFreeCADBridge:
                 return "Fehler: Kein aktives Dokument."
             achsen = []
             for label in achsen_liste:
-                a = self._get_obj(f"Achse_{label}")
+                a = self._get_obj(label)
                 if a:
                     achsen.append(a)
+                else:
+                    return f"Fehler: Achse '{label}' nicht gefunden."
             if not achsen:
                 return "Fehler: Keine Achsen gefunden."
             system = Arch.makeAxisSystem(achsen)

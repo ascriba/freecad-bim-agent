@@ -16,7 +16,7 @@ FREE_CAD_BRIDGE_URL = "http://localhost:8000"
 
 def get_bridge():
     """Erstellt eine neue Verbindung zur Bridge."""
-    return xmlrpc.client.ServerProxy(FREE_CAD_BRIDGE_URL)
+    return xmlrpc.client.ServerProxy(FREE_CAD_BRIDGE_URL, allow_none=True)
 
 @mcp.tool()
 def create_cube(length: str = "10mm", width: str = "10mm", height: str = "10mm") -> str:
@@ -565,14 +565,77 @@ def create_stairs(
         return f"Fehler: {str(e)}"
 
 @mcp.tool()
+def create_axis(
+    count: str = "5",
+    spacing: str = "5000mm",
+    length: str = "14000mm",
+    for_building: str | None = None,
+    building_pad: float = 2.0,
+    x: str = "0mm",
+    y: str = "0mm",
+    z: str = "0mm",
+    rotation: float = 0.0,
+    numbering_style: str = "1,2,3",
+    bubble_size: str = "200",
+    font_size: str = "150",
+    line_width: str = "2",
+    bubble_position: str = "Left",
+    show_labels: str = "True",
+    font_name: str = "",
+    name: str = "Achsen"
+) -> str:
+    """
+    Erstellt ein Arch-Achsen-System mit mehreren parallelen Achsen.
+    Die Achsen dienen als Referenzlinien zum Einrasten von Objekten.
+
+    Args:
+        count: Anzahl der parallelen Achsen.
+        spacing: Abstand zwischen benachbarten Achsen (z.B. '5000mm').
+        length: Länge der Achslinien (z.B. '14000mm').
+        for_building: Name/Label eines Gebäudes. Ermittelt automatisch
+                      die nötige Achslänge (max(Breite,Tiefe) + 2*building_pad)
+                      und setzt die Position auf die Gebäudeecke.
+        building_pad: Überstand pro Seite in METERN (Default 2.0 = 4m gesamt).
+        x: X-Position des Achsen-Ursprungs mit Einheit.
+        y: Y-Position des Achsen-Ursprungs mit Einheit.
+        z: Z-Position (Höhe) mit Einheit.
+        rotation: Drehung des gesamten Achsensystems in Grad (0 = gerade).
+        numbering_style: Nummerierungsstil, z.B. '1,2,3' oder 'A,B,C'.
+        bubble_size: Größe der Achsenblasen in mm (z.B. 200).
+        font_size: Schriftgröße der Blasentexte.
+        line_width: Linienstärke der Achsen.
+        bubble_position: Position der Blase ('Left', 'Right', 'Both', 'None',
+                         'Arrow Left/Right', 'Bar Left/Right').
+        show_labels: Beschriftungstexte anzeigen.
+        font_name: Schriftart (z.B. 'Arial'). Leer = Standardschrift.
+        name: Label des Achsen-Objekts in FreeCAD.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_achse(
+            count, spacing, length, for_building, building_pad,
+            x, y, z, rotation,
+            numbering_style, bubble_size, font_size, line_width,
+            bubble_position, show_labels, font_name, name
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+@mcp.tool()
 def create_axes(axes: list[dict]) -> str:
     """
-    Erstellt mehrere Bauachsen auf einmal.
-    
+    Erstellt mehrere Bauachsen auf einmal (Batch-Version von create_axis).
+
     Args:
-        axes: Liste von Dicts mit label, x, y, z, direction.
-               Z.B. [{"label": "1", "x": "0mm", "y": "0mm", "direction": "Y"},
-                      {"label": "2", "x": "5000mm", "y": "0mm", "direction": "Y"}]
+        axes: Liste von Dicts. Jedes Dict unterstützt alle Parameter
+               von create_axis: count, spacing, length, for_building,
+               building_pad, x, y, z, rotation, numbering_style,
+               bubble_size, font_size, line_width, bubble_position,
+               show_labels, font_name, name (oder label).
+               Z.B. [{"count": 5, "spacing": "5000mm", "x": "0mm", "y": "0mm",
+                       "numbering_style": "1,2,3", "name": "Achsen_1"},
+                      {"count": 4, "spacing": "5000mm", "x": "0mm", "y": "6000mm",
+                       "numbering_style": "A,B,C, D", "rotation": -90, "name": "Achsen_2"}]
     """
     try:
         bridge = get_bridge()
@@ -580,39 +643,19 @@ def create_axes(axes: list[dict]) -> str:
     except Exception as e: return f"Fehler: {str(e)}"
 
 @mcp.tool()
-def create_axis(
-    x: str = "0mm",
-    y: str = "0mm",
-    z: str = "0mm",
-    direction: str = "Z",
-    label: str = "1"
-) -> str:
-    """
-    Erstellt eine Bauachse (Arch Axis).
-
-    Args:
-        x: X-Position mit Einheit (z.B. '0mm').
-        y: Y-Position mit Einheit (z.B. '0mm').
-        z: Z-Position mit Einheit (z.B. '0mm').
-        direction: Achsenrichtung ('X', 'Y' oder 'Z').
-        label: Achsenbezeichnung (z.B. '1', 'A').
-    """
-    try:
-        bridge = get_bridge()
-        return bridge.erstelle_achse(x, y, z, direction, label)
-    except Exception as e:
-        return f"Fehler: {str(e)}"
-
-@mcp.tool()
 def create_axis_system(
     axes: list[str],
     name: str = "Achsensystem"
 ) -> str:
     """
-    Erstellt ein Achssystem (Arch AxisSystem) aus mehreren Achsen.
+    Erstellt ein Achssystem (Arch AxisSystem) aus mehreren bestehenden Achsen.
+
+    Die Achsen-Objekte werden anhand ihres Labels oder Namens gesucht.
+    Ein Achssystem kombiniert mehrere Achsengruppen (z.B. horizontale
+    und vertikale Achsen) zu einem orthogonalen Raster.
 
     Args:
-        axes: Liste von Achsen-Labels (z.B. ['1', '2', '3', 'A', 'B']).
+        axes: Liste von Achsen-Labels oder -Namen (z.B. ['Achse_1', 'Achse_2']).
         name: Label des Achssystems in FreeCAD.
     """
     try:

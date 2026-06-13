@@ -142,9 +142,9 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 
 | Tool | Argumente | Beschreibung |
 | :---- | :---- | :---- |
-| create\_axis | x, y, z, direction (X/Y/Z), label | Erstellt eine einzelne Bauachse. |
-| create\_axes | axes (List\[Dict\]) | Batch-Erstellung mehrerer Bauachsen in einem Aufruf. |
-| create\_axis\_system | axes (List\[Str\]), name | Fasst mehrere Achsen zu einem Achssystem zusammen. |
+| create\_axis | count, spacing, length, for\_building, building\_pad, x, y, z, rotation, numbering\_style, bubble\_size, font\_size, line\_width, bubble\_position, show\_labels, font\_name, name | Erstellt parallele Bauachsen (Arch Axis) mit vollem View-Property-Zugriff. Auto-Länge via Gebäude-BBox wenn for\_building gesetzt. |
+| create\_axes | axes (List\[Dict\]) | Batch-Erstellung — jedes Dict unterstützt alle create\_axis-Parameter. |
+| create\_axis\_system | axes (List\[Str\]), name | Fasst mehrere Achsen zu einem orthogonalen Achssystem zusammen. |
 | create\_section\_plane | x, y, z, direction, name | Erstellt eine Schnittebene für Grundrisse und Ansichten. |
 
 ### **5\. MEP (Technische Gebäudeausrüstung) & Spezialstrukturen**
