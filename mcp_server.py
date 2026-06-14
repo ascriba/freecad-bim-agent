@@ -540,27 +540,25 @@ def create_roof(
 
 @mcp.tool()
 def create_stairs(
-    length: str = "1000mm",
-    width: str = "1200mm",
     height: str = "2500mm",
-    steps_count: int = 14,
-    stringer_thickness: str = "50mm",
+    width: str = "1200mm",
+    landing: bool = False,
     name: str = "Treppe"
 ) -> str:
     """
-    Erstellt eine Treppe (Arch Stairs).
+    Erstellt eine Treppe (Arch Stairs) in der XY-Ebene.
+    Stufenanzahl wird automatisch berechnet (Formel 2h + b = 630mm).
+    Optional mit Zwischenpodest (Polyline-Baseline).
 
     Args:
-        length: Gesamtlauflänge der Treppe (z.B. '1000mm').
-        width: Breite der Treppe (z.B. '1200mm').
         height: Geschosshöhe (z.B. '2500mm').
-        steps_count: Anzahl der Stufen (z.B. 14).
-        stringer_thickness: Wangenstärke (z.B. '50mm').
+        width: Breite der Treppe (z.B. '1200mm').
+        landing: True = Zwischenpodest nach der Hälfte der Stufen.
         name: Label der Treppe in FreeCAD.
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_treppe(length, width, height, steps_count, stringer_thickness, name)
+        return bridge.erstelle_treppe(height, width, landing, name)
     except Exception as e:
         return f"Fehler: {str(e)}"
 

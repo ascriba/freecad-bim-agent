@@ -130,7 +130,7 @@ The server registers a wide range of tools. Below is a structured overview of al
 | create\_window | wall\_ident, distance\_from\_start, width, height, sill\_height, windowtype, name | Inserts a window/door into a wall. Automatically cuts the wall opening. |
 | create\_window\_sketch | wall\_ident, width, height, sill\_height, name | Creates a custom window based on a sketch. |
 | create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle, name | Generates a roof from a closed polygon outline. |
-| create\_stairs | length, width, height, steps\_count, stringer\_thickness | Creates a parametric staircase. |
+| create\_stairs | height, width, landing (bool), name | Creates a parametric staircase (Arch Stairs). Steps auto-calculated via 2h+b=630mm. Optional U-turn landing. |
 | create\_opening | base\_object, shape, position \[X,Y,Z\], size \[W,H,D\], name | Creates a cutout in a building element via Boolean Cut. |
 | copy\_to\_floor | source\_walls (List\[Str\]), target\_floor, z\_offset, x\_extension | Copies walls to another floor with height offset. |
 | create\_attika | roof\_slab, height, thickness, offset, name\_prefix | Automatically generates parapet walls along a roof slab perimeter. |

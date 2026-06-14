@@ -130,7 +130,7 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | create\_window | wall\_ident, distance\_from\_start, width, height, sill\_height, windowtype, name | Fügt ein Fenster/eine Tür in eine Wand ein. Schneidet die Wand automatisch auf. |
 | create\_window\_sketch | wall\_ident, width, height, sill\_height, name | Erstellt ein benutzerdefiniertes Fenster basierend auf einer Skizze. |
 | create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle, name | Generiert ein Dach aus einem geschlossenen Polygon-Umriss. |
-| create\_stairs | length, width, height, steps\_count, stringer\_thickness | Erstellt eine parametrische Treppenanlage. |
+| create\_stairs | height, width, landing (bool), name | Erstellt eine parametrische Treppe (Arch Stairs). Stufen automatisch via 2h+b=630mm. Optional mit U-förmigem Zwischenpodest. |
 | create\_opening | base\_object, shape, position \[X,Y,Z\], size \[W,H,D\], name | Erzeugt einen Durchbruch in einem Bauteil via Boolean-Cut. |
 | copy\_to\_floor | source\_walls (List\[Str\]), target\_floor, z\_offset, x\_extension | Kopiert Wände auf ein anderes Geschoss mit Höhenversatz. |
 | create\_attika | roof\_slab, height, thickness, offset, name\_prefix | Generiert automatisch Attika-Umfassungswände entlang einer Dachplatte. |
