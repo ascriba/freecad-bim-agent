@@ -113,6 +113,12 @@ L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)
 
+L("--- Profiled Structure ---")
+test("profiled_structure_ipe", lambda: bridge.erstelle_profil_struktur("IPE300", "1000mm", "TestIPETraeger", None, 0, 0, 0), "Profil-Struktur:")
+test("profiled_structure_chs", lambda: bridge.erstelle_profil_struktur("CHS48.3x3.2", "500mm", "TestCHSStuetze", None, 0.5, 0.5, 0), "Profil-Struktur:")
+test("profiled_structure_fallback", lambda: bridge.erstelle_profil_struktur("2x1 Channel", "800mm", "TestAlu", "Aluminium C Channel", 1.0, 1.0, 0), "Profil-Struktur:")
+test("profiled_structure_notfound", lambda: bridge.erstelle_profil_struktur("NichtExistiert", "100mm", "Test"), "Fehler:")
+
 L("--- Draft ---")
 test("create_circle", lambda: bridge.erstelle_kreis("30mm", "0mm", "0mm", "0mm"), "Kreis:")
 test("create_arc", lambda: bridge.erstelle_kreisbogen("0mm", "0mm", "0mm", "30mm", "0deg", "180deg"), "Bogen:")

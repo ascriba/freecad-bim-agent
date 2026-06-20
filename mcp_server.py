@@ -473,6 +473,30 @@ def create_structure(length: str = "100mm", width: str = "20mm", height: str = "
         return f"Fehler: {str(e)}"
 
 @mcp.tool()
+def create_profiled_structure(
+    profile_name: str = "IPE300",
+    height: str = "3000mm",
+    name: str = "Profilstruktur",
+    category: str | None = None,
+    position_x: float | None = None,
+    position_y: float | None = None,
+    position_z: float | None = None) -> str:
+    """
+    Erstellt ein Tragwerk-Element (Arch Structure) mit vordefiniertem Profil aus profiles_copy.csv.
+    Unterstützte Profil-Klassen: C (Rundhohl), H (I/H-Träger), R (Vollrechteck),
+    RH (Rechteck-Hohlprofil), U (U-Profil), L (Winkel), T (T-Profil), TSLOT (Nutenprofil).
+    profile_name wird case-insensitive gegen die Name-Spalte gematched (z.B. "IPE300", "HEA200").
+    Optional category für eindeutige Suche (z.B. category="IPE" fuer IPE300).
+    height als Einheiten-String (z.B. "3000mm", "5m").
+    position_x/y/z in METERN (optional, setzen absolute Position).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.erstelle_profil_struktur(profile_name, height, name, position_x, position_y, position_z, category)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+@mcp.tool()
 def execute_python(script: str) -> str:
     """
     ULTIMATIVES WERKZEUG: Führt beliebigen Python-Code direkt in FreeCAD aus.

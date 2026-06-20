@@ -31,3 +31,6 @@ AGENTS.md
 
 # Standard-README wird nicht getrackt (eigenes Format)
 README.md
+
+# Profil-CSV – wird von FreeCAD-Systemprofilen ersetzt
+profiles_copy.csv

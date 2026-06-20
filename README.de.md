@@ -152,6 +152,7 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | Tool | Argumente | Beschreibung |
 | :---- | :---- | :---- |
 | create\_structure | length, width, height, name, position\_x/y/z (opt.) | Erstellt Tragwerkselemente wie Balken oder Stützen. Optional mit Position in Metern. |
+| create\_profiled\_structure | profile\_name, height, name, category (opt.), position\_x/y/z (opt.) | Erstellt ein Tragwerk mit vordefiniertem Stahlprofil (IPE, HEA, HEB, CHS, UPE etc.). Unterstützt Profil-Klassen: C, H, R, RH, U, L, T, TSLOT. `category` optional zur Disambiguierung. Nutzt FreeCADs systemweite profiles.csv; Fallback auf lokale profiles\_copy.csv neben freecad\_bridge.py, im Dokument-Verzeichnis oder Arbeitsverzeichnis. |
 | create\_panel | length, width, thickness, name | Erstellt ein Arch-Paneel (Platte). |
 | create\_curtain\_wall | basewire, panel\_width, panel\_height, name | Erstellt eine Glas-Vorhangfassade entlang eines Pfades. |
 | create\_pipe | basewire, outer\_diameter, wall\_thickness, name | Erstellt ein Rohrleitungssystem entlang eines 3D-Pfades. |

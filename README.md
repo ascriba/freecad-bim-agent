@@ -152,6 +152,7 @@ The server registers a wide range of tools. Below is a structured overview of al
 | Tool | Arguments | Description |
 | :---- | :---- | :---- |
 | create\_structure | length, width, height, name, position\_x/y/z (opt.) | Creates structural elements like beams or columns. Optional position in meters. |
+| create\_profiled\_structure | profile\_name, height, name, category (opt.), position\_x/y/z (opt.) | Creates a structural element with a predefined steel profile (IPE, HEA, HEB, CHS, UPE, etc.). Supports profile classes: C, H, R, RH, U, L, T, TSLOT. Optional `category` for disambiguation. Uses FreeCAD's system profiles.csv by default; falls back to a local profiles\_copy.csv next to freecad\_bridge.py, in the document directory, or in the current working directory. |
 | create\_panel | length, width, thickness, name | Creates an Arch Panel. |
 | create\_curtain\_wall | basewire, panel\_width, panel\_height, name | Creates a glass curtain wall along a path. |
 | create\_pipe | basewire, outer\_diameter, wall\_thickness, name | Creates a pipe system along a 3D path. |

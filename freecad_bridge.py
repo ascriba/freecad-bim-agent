@@ -9,6 +9,7 @@ import base64
 import io
 import sys
 import queue
+import csv
 
 # --- Konfiguration ---
 PORT = 8000
@@ -513,6 +514,97 @@ class RobustFreeCADBridge:
             doc.recompute()
             return f"Struktur: {struct.Label}"
         except Exception as e: return f"Fehler: {str(e)}"
+
+    def _finde_profil_csv(self):
+        kandidaten = []
+
+        # 1. FreeCAD-Systemprofile (autoritative Quelle)
+        resource_dir = App.getResourceDir()
+        kandidaten.append(os.path.join(resource_dir, "Mod", "BIM", "Presets", "profiles.csv"))
+        kandidaten.append(os.path.join(resource_dir, "Mod", "Arch", "Presets", "profiles.csv"))
+
+        # 2. User-AppData (FreeCAD 1.0+)
+        kandidaten.append(os.path.join(App.getUserAppDataDir(), "BIM", "profiles.csv"))
+
+        # 3. Lokale profiles_copy.csv als Fallback / User-Override
+        kandidaten.append(os.path.join(os.getcwd(), "profiles_copy.csv"))
+
+        # 4. Gleiches Verzeichnis wie freecad_bridge.py
+        try:
+            kandidaten.append(os.path.join(os.path.dirname(__file__), "profiles_copy.csv"))
+        except NameError:
+            pass
+
+        # 5. Verzeichnis der aktiven FreeCAD-Datei (falls gespeichert)
+        try:
+            doc_path = App.ActiveDocument.FileName
+            if doc_path:
+                kandidaten.append(os.path.join(os.path.dirname(doc_path), "profiles_copy.csv"))
+        except Exception:
+            pass
+
+        for p in kandidaten:
+            if os.path.exists(p):
+                return p
+
+        raise FileNotFoundError(
+            "Profil-CSV nicht gefunden. Bei einer normalen FreeCAD-Installation "
+            "liegt sie unter 'Mod/BIM/Presets/profiles.csv'. Als Fallback kann "
+            "'profiles_copy.csv' ins aktuelle Arbeitsverzeichnis gelegt werden."
+        )
+
+    def _finde_profil(self, profile_name, category=None):
+        csv_path = self._finde_profil_csv()
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if not row or row[0].startswith("#"):
+                    continue
+                if len(row) < 4:
+                    continue
+                cat, name = row[0].strip(), row[1].strip()
+                if name.lower() == profile_name.lower():
+                    if category and cat.lower() != category.lower():
+                        continue
+                    pclass = row[2].strip()
+                    params = [float(p) for p in row[3:]]
+                    return {"category": cat, "name": name, "profile_class": pclass, "params": params}
+        msg = f"Profil '{profile_name}' nicht gefunden"
+        if category:
+            msg += f" in Kategorie '{category}'"
+        raise ValueError(msg)
+
+    def erstelle_profil_struktur(self, profile_name="IPE300", height="3000mm", name="Profilstruktur",
+                                  position_x=None, position_y=None, position_z=None, category=None):
+        try:
+            import Arch
+            import Draft
+            doc = App.ActiveDocument or App.newDocument("BIM")
+            profil_data = self._finde_profil(profile_name, category)
+            profil_liste = [0, profil_data["category"], profil_data["name"],
+                            profil_data["profile_class"]] + profil_data["params"]
+            p = Arch.makeProfile(profil_liste)
+            h = self._parse_unit(height)
+            s = Arch.makeStructure(p, height=h)
+            s.Profile = profil_data["name"]
+            s.Label = name
+            if position_x is not None and position_y is not None:
+                x = position_x * 1000.0 if isinstance(position_x, (int, float)) else self._parse_unit(str(position_x))
+                y = position_y * 1000.0 if isinstance(position_y, (int, float)) else self._parse_unit(str(position_y))
+                z = (position_z or 0) * 1000.0 if isinstance(position_z if position_z else 0, (int, float)) else self._parse_unit(str(position_z or "0mm"))
+                s.Placement.Base = App.Vector(x, y, z)
+            try:
+                import WorkingPlane
+                wp = WorkingPlane.get_working_plane()
+                if wp:
+                    s.Placement.Rotation = s.Placement.Rotation.multiply(wp.get_placement().Rotation)
+            except Exception:
+                pass
+            Draft.autogroup(s)
+            doc.recompute()
+            return f"Profil-Struktur: {s.Label} ({s.Name}) - Profil: {profil_data['name']} ({profil_data['category']})"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def fuege_zu_wand_hinzu(self, wand_n, komp_n):
         try:
