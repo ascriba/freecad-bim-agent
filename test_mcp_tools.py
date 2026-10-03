@@ -557,6 +557,31 @@ test(
 )
 test("ifc_type_ohne_prop", lambda: bridge.setze_ifc_typ("Wuerfel", "Wall"), "Fehler:")
 
+L("--- save_document ---")
+
+
+def t_save():
+    if os.path.exists("test_mcp_save.FCStd"):
+        os.remove("test_mcp_save.FCStd")
+    r = bridge.speichere_dokument("test_mcp_save.FCStd")
+    if not r.startswith("Gespeichert:"):
+        raise AssertionError(r)
+    if not os.path.exists("test_mcp_save.FCStd"):
+        raise AssertionError("Datei nicht erstellt")
+    r2 = bridge.speichere_dokument()  # jetzt existiert doc.FileName
+    if not r2.startswith("Gespeichert:"):
+        raise AssertionError(r2)
+    os.remove("test_mcp_save.FCStd")
+    return "Roundtrip OK"
+
+
+test("save_document", t_save, None)
+test(
+    "save_verbotener_pfad",
+    lambda: bridge.speichere_dokument("/tmp/opencode/boese.FCStd"),
+    "Fehler:",
+)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

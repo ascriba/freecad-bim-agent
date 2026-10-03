@@ -1913,6 +1913,31 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
+    def speichere_dokument(self, pfad=None):
+        try:
+            doc = App.ActiveDocument
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
+            if pfad:
+                safe_path = self._sanitize_path(pfad)
+                if not safe_path.lower().endswith(".fcstd"):
+                    safe_path += ".FCStd"
+                self._audit("SAVE", f"Dokument nach {safe_path}")
+                doc.saveAs(safe_path)
+                return f"Gespeichert: {safe_path} ({len(doc.Objects)} Objekte)"
+            if not doc.FileName:
+                return (
+                    "Fehler: Dokument wurde noch nie gespeichert und kein Pfad "
+                    "angegeben. Bitte save_document mit path=... aufrufen."
+                )
+            self._audit("SAVE", f"Dokument {doc.FileName}")
+            doc.save()
+            return f"Gespeichert: {doc.FileName} ({len(doc.Objects)} Objekte)"
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
     def analysiere_ifc(self, file_path):
         try:
             safe_path = self._sanitize_path(file_path)

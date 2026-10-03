@@ -1569,6 +1569,22 @@ def remove_space_boundary(
         return f"Fehler: {str(e)}"
 
 
+@mcp.tool()
+def save_document(path: str | None = None) -> str:
+    """
+    Saves the active FreeCAD document as FCStd. PERSISTS THE MODEL — call regularly!
+
+    Args:
+        path: Absolute or relative path (must stay inside the allowed working directory).
+              None = save under the document's existing file name (fails if never saved before).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.speichere_dokument(path)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+
 if __name__ == "__main__":
     # Startet den MCP-Server
     mcp.run()
