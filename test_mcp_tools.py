@@ -366,6 +366,47 @@ def t_mirror():
 
 test("mirror_check", t_mirror, None)
 
+L("--- get_quantities (aus Shape) ---")
+test(
+    "mengen_wuerfel",
+    lambda: bridge.erstelle_wuerfel("10400mm", "8400mm", "300mm"),
+    "Erfolg:",
+)
+for o in App.ActiveDocument.Objects:
+    if (
+        o.Label.startswith("Wuerfel")
+        and o.Name != "Wuerfel"
+        and o.Label != "TestWuerfel"
+        and o.Label != "MoveByTest"
+        and o.Label != "MoveByCutBase"
+    ):
+        bridge.umbenennen_objekt(o.Name, "MengenTest")
+        break
+
+
+def t_mengen():
+    r = bridge.ermittle_mengen("MengenTest")
+    if "26.208" not in r:
+        raise AssertionError(f"Volume falsch: {r}")
+    if "10400.0" not in r or "8400.0" not in r:
+        raise AssertionError(f"BBox-Dims fehlen: {r}")
+    if "25.4" in r:
+        raise AssertionError(f"Inch-Fallback aktiv: {r}")
+    return r[:70]
+
+
+test("mengen_check", t_mengen, None)
+
+
+def t_mengen_container():
+    r = bridge.ermittle_mengen("TestEG")
+    if "keine Geometrie" not in r:
+        raise AssertionError(f"Container-Meldung fehlt: {r}")
+    return "Container OK"
+
+
+test("mengen_container", t_mengen_container, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

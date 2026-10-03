@@ -1807,14 +1807,30 @@ class RobustFreeCADBridge:
             obj = self._get_obj(obj_name)
             if not obj:
                 return "Objekt nicht gefunden."
-            q = {}
-            for k in ["Area", "Volume", "Length", "Height", "Width"]:
-                if hasattr(obj, k) and getattr(obj, k) is not None:
-                    val = getattr(obj, k)
-                    q[k] = f"{val}"
-            return f"Mengen für {obj.Label}:\n" + "\n".join(
-                [f"- {k}: {v}" for k, v in q.items()]
+            if not (hasattr(obj, "Shape") and obj.Shape and not obj.Shape.isNull()):
+                return f"Mengen für {obj.Label}: keine Geometrie (Typ: {obj.TypeId})."
+            s = obj.Shape
+            bb = s.BoundBox
+            lines = [
+                f"Mengen für {obj.Label}:",
+                f"- Volume: {s.Volume:.1f} mm3 ({s.Volume * 1e-9:.4f} m3)",
+            ]
+            try:
+                lines.append(f"- Area: {s.Area:.1f} mm2 ({s.Area * 1e-6:.4f} m2)")
+            except Exception:
+                pass
+            if hasattr(s, "Perimeter"):
+                try:
+                    lines.append(
+                        f"- Perimeter: {s.Perimeter:.1f} mm ({s.Perimeter / 1000.0:.4f} m)"
+                    )
+                except Exception:
+                    pass
+            lines.append(
+                f"- BBox Länge/Breite/Höhe: "
+                f"{bb.XLength:.1f}/{bb.YLength:.1f}/{bb.ZLength:.1f} mm"
             )
+            return "\n".join(lines)
         except Exception as e:
             return f"Fehler: {str(e)}"
 
