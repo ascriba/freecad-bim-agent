@@ -582,6 +582,32 @@ test(
     "Fehler:",
 )
 
+L("--- recompute ---")
+
+
+def t_recompute():
+    bridge._get_obj("Wuerfel").touch()
+    r = bridge.rekalkuliere()
+    if "Fehler" in r.split("\n")[0]:
+        raise AssertionError(r)
+    if "TOUCHED" in r:
+        raise AssertionError(f"Touch nicht aufgeloest: {r}")
+    return r[:60]
+
+
+test("recompute_doc", t_recompute, None)
+
+
+def t_recompute_obj():
+    r = bridge.rekalkuliere("Wuerfel")
+    if "Fehler" in r.split("\n")[0]:
+        raise AssertionError(r)
+    return r[:60]
+
+
+test("recompute_obj", t_recompute_obj, None)
+test("recompute_nicht_gefunden", lambda: bridge.rekalkuliere("GibtEsNicht"), "Fehler:")
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

@@ -1585,6 +1585,22 @@ def save_document(path: str | None = None) -> str:
         return f"Fehler: {str(e)}"
 
 
+@mcp.tool()
+def recompute(object_name: str | None = None) -> str:
+    """
+    Recomputes the document (or a single object) and reports remaining TOUCHED/INVALID
+    objects, including affected children for INVALID containers.
+
+    Args:
+        object_name: Optional — recompute only this object first.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.rekalkuliere(object_name)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+
 if __name__ == "__main__":
     # Startet den MCP-Server
     mcp.run()

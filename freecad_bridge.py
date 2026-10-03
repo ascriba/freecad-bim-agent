@@ -2419,6 +2419,53 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
+    def rekalkuliere(self, obj_name=None):
+        try:
+            doc = App.ActiveDocument
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
+            if obj_name:
+                ziel = self._get_obj(obj_name)
+                if not ziel:
+                    return f"Fehler: '{obj_name}' nicht gefunden."
+                ziel.recompute()
+            try:
+                anzahl = doc.recompute()
+            except Exception:
+                doc.recompute()
+                anzahl = None
+            lines = []
+            if anzahl:
+                lines.append(f"{anzahl} Objekt(e) neu berechnet.")
+            touched = [
+                o.Label
+                for o in doc.Objects
+                if hasattr(o, "State") and "Touched" in str(o.State)
+            ]
+            invalid = [
+                o
+                for o in doc.Objects
+                if hasattr(o, "State") and "Invalid" in str(o.State)
+            ]
+            if touched:
+                lines.append(f"TOUCHED ({len(touched)}): {', '.join(touched)}")
+            if invalid:
+                details = []
+                for o in invalid:
+                    kids = [
+                        c.Label
+                        for c in getattr(o, "Group", [])
+                        if hasattr(c, "State") and "Invalid" in str(c.State)
+                    ]
+                    details.append(
+                        f"{o.Label} ({o.TypeId})"
+                        + (f" — betroffene Kinder: {', '.join(kids)}" if kids else "")
+                    )
+                lines.append(f"INVALID ({len(invalid)}): " + "; ".join(details))
+            return "\n".join(lines) if lines else "OK: keine offenen Flags."
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
     def validiere_ifc_export(self):
         try:
             doc = App.ActiveDocument
