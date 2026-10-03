@@ -96,9 +96,10 @@ The server registers a wide range of tools. Below is a structured overview of al
 | create\_cylinder | radius, height (strings with units) | Creates a cylinder. |
 | create\_sphere | radius (string with units) | Creates a sphere. |
 | set\_position | name (Str), x, y, z (Floats) | Moves an object to absolute coordinates (in meters). |
+| move\_by | name (Str), dx, dy, dz (Floats) | Moves an object RELATIVELY by an offset (in meters). Unlike set\_position (absolute). |
 | rotate\_object | name (Str), axis (X/Y/Z), angle (Float) | Rotates an object around the specified axis (degrees). |
 | clone\_object | source\_name, new\_name | Creates a parametric Draft Clone. |
-| mirror\_object | source\_name, axis, origin\_x/y/z, new\_name | Mirrors an object across a defined axis plane. |
+| mirror\_object | source\_name, axis, origin\_x/y/z (meters or unit string), new\_name | Mirrors an object across a defined axis plane. Origin in METERS. |
 
 ### **2\. Boolean Operations & Modifiers**
 
@@ -119,9 +120,9 @@ The server registers a wide range of tools. Below is a structured overview of al
 | create\_floor | name | Creates a floor / storey (Arch Floor). |
 | add\_to\_container | object\_name, container\_name | Assigns an object hierarchically (e.g., wall into floor). |
 | add\_to\_container\_batch | object\_names (List\[Str\]), container\_name | Assigns multiple objects to a container at once. |
-| create\_slab | length, width, height, name, placement\_x/y/z | Creates a floor or ceiling slab. |
-| create\_slab\_with\_openings | *Same as Slab*, + openings (List\[Dict\]) | Creates a slab with predefined openings. |
-| create\_wall | p1 \[X,Y,Z\], p2 \[X,Y,Z\], width, height, name | Creates a straight wall between two 3D points (in METERS). |
+| create\_slab | length, width, height, name, placement\_x/y/z, direction ("-z"/"+z") | Creates a floor or ceiling slab. `direction="-z"` (default): placement\_z = top edge, extrudes downward. `"+z"`: placement\_z = bottom edge, extrudes upward. |
+| create\_slab\_with\_openings | *Same as Slab*, + openings (List\[Dict\]), direction | Creates a slab with predefined openings. Same direction semantics as create\_slab. |
+| create\_wall | p1 \[X,Y,Z\], p2 \[X,Y,Z\], width, height, name, align, align\_to | Creates a straight wall between two 3D points (in METERS). align: Left/Center/Right at creation time; align\_to: inside/outside overrides align. |
 | join\_walls | walls (List\[Str\]) | Joins multiple walls into a single object. |
 | add\_to\_wall | wall\_name, component\_name | Inserts a window/door into a wall (Host relationship). |
 | align\_wall | wall\_name, align, align\_to | Aligns the wall relative to its baseline (Left, Center, Right, inside, outside). |
@@ -129,8 +130,8 @@ The server registers a wide range of tools. Below is a structured overview of al
 | set\_wall\_alignment | wall, ref\_at\_outside (Bool) | Moves the reference line to the outer edge and adjusts alignment. |
 | create\_window | wall\_ident, distance\_from\_start, width, height, sill\_height, windowtype, name | Inserts a window/door into a wall. Automatically cuts the wall opening. |
 | create\_window\_sketch | wall\_ident, width, height, sill\_height, name | Creates a custom window based on a sketch. |
-| create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle, name | Generates a roof from a closed polygon outline. |
-| create\_stairs | height, width, landing (bool), name | Creates a parametric staircase (Arch Stairs). Steps auto-calculated via 2h+b=630mm. Optional U-turn landing. |
+| create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle (Float or List), name | Generates a roof from a closed polygon outline. angle: float (all faces) or per-edge list (point order; 90 = vertical gable). Runs/IdRel are calculated automatically; ridge height = base-z + run·tan(angle). |
+| create\_stairs | height, width, landing (bool), name | Creates a parametric staircase (Arch Stairs). Step count via 2h+b=630mm. Landing (`landing=true`) uses Flight/Landings properties (FreeCAD ≥ 1.0): U-shape with center landing. |
 | create\_opening | base\_object, shape, position \[X,Y,Z\], size \[W,H,D\], name | Creates a cutout in a building element via Boolean Cut. |
 | copy\_to\_floor | source\_walls (List\[Str\]), target\_floor, z\_offset, x\_extension | Copies walls to another floor with height offset. |
 | create\_attika | roof\_slab, height, thickness, offset, name\_prefix | Automatically generates parapet walls along a roof slab perimeter. |
@@ -177,9 +178,10 @@ The server registers a wide range of tools. Below is a structured overview of al
 | Tool | Arguments | Description |
 | :---- | :---- | :---- |
 | set\_ifc\_data | object\_name, properties\_json | Assigns custom IFC properties (Psets) to objects. |
-| set\_material | object\_name, material\_name, color\_rgb | Assigns a material and visualization color (R,G,B). |
+| set\_ifc\_type | object\_name, ifc\_type | Sets the IFC type of an Arch object (e.g. 'Wall', 'Slab', 'Roof', 'Curtain Wall') with enum validation. |
+| set\_material | object\_name, material\_name, color\_rgb | Assigns a material and visualization color (R,G,B) to an object. |
 | set\_material\_batch | object\_names (List\[Str\]), material\_name, color\_rgb | Assigns the same material to multiple objects at once. |
-| get\_quantities | object\_name | Calculates area, volume, and mass of an object. |
+| get\_quantities | object\_name | Calculates quantities from geometry (Shape): volume, area, perimeter, BBox dimensions. Shapeless objects report "keine Geometrie". |
 | export\_ifc | file\_path | Exports the entire model as a standardized BIM IFC file (fallback via Arch.export). |
 | analyze\_ifc | file\_path | Analyzes an IFC file externally and returns project statistics. |
 | create\_schedule | object\_type, properties, name | Creates an automated parts list (Arch Schedule). |
@@ -200,6 +202,8 @@ The server registers a wide range of tools. Below is a structured overview of al
 | capture\_view | view\_type ("iso"/"top"/"front"/"right") | **Returns an mcp.Image (PNG).** Takes a screenshot of the current 3D viewport for visual verification. |
 | validate\_model | *none* | Validates the model for errors (Invalid flags), collisions, invalid bounding boxes, and orphaned objects. |
 | validate\_ifc\_export | *none* | Preflight check for missing IFC data/materials before export. |
+| recompute | object\_name (opt.) | Recomputes the document (or a single object) and reports remaining TOUCHED/INVALID objects including affected children. |
+| save\_document | path (opt.) | Saves the active document as FCStd (saveAs with path, otherwise save). **Call regularly!** Path must stay inside the allowed working directory. |
 | execute\_python | script (Python-Code) | **Security-critical.** Executes native Python code in the FreeCAD context. Enabled/disabled via Qt dialog at bridge startup. |
 
 ## **Code Architecture (mcp\_server.py)**

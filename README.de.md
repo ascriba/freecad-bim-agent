@@ -96,9 +96,10 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | create\_cylinder | radius, height (Strings mit Einheit) | Erstellt einen Zylinder. |
 | create\_sphere | radius (String mit Einheit) | Erstellt eine Kugel. |
 | set\_position | name (Str), x, y, z (Floats) | Verschiebt ein Objekt an absolute Koordinaten (in Metern). |
+| move\_by | name (Str), dx, dy, dz (Floats) | Verschiebt ein Objekt RELATIV um einen Offset (in Metern). Im Gegensatz zu set\_position (absolut). |
 | rotate\_object | name (Str), axis (X/Y/Z), angle (Float) | Dreht ein Objekt um die angegebene Achse in Grad. |
 | clone\_object | source\_name, new\_name | Erstellt einen parametrischen Entwurfs-Klon (Draft Clone). |
-| mirror\_object | source\_name, axis, origin\_x/y/z, new\_name | Spiegelt ein Objekt an einer definierten Achsenebene. |
+| mirror\_object | source\_name, axis, origin\_x/y/z (Meter oder Einheiten-String), new\_name | Spiegelt ein Objekt an einer definierten Achsenebene. Origin in METERN. |
 
 ### **2\. Boolesche Operationen & Modifikatoren**
 
@@ -119,9 +120,9 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | create\_floor | name | Erstellt ein Stockwerk / Geschoss (Arch Floor). |
 | add\_to\_container | object\_name, container\_name | Ordnet ein Objekt hierarchisch zu (z.B. Wand in Stockwerk). |
 | add\_to\_container\_batch | object\_names (List\[Str\]), container\_name | Mehrere Objekte auf einmal einem Container zuordnen. |
-| create\_slab | length, width, height, name, placement\_x/y/z | Erstellt eine Boden- oder Deckenplatte. |
-| create\_slab\_with\_openings | *Identisch mit Slab*, \+ openings (List\[Dict\]) | Erstellt eine Deckenplatte mit vordefinierten Durchbrüchen. |
-| create\_wall | p1 \[X,Y,Z\], p2 \[X,Y,Z\], width, height, name | Erstellt eine gerade Wand zwischen zwei 3D-Punkten (in METERN). |
+| create\_slab | length, width, height, name, placement\_x/y/z, direction ("-z"/"+z") | Erstellt eine Boden- oder Deckenplatte. `direction="-z"` (Default): placement\_z = Oberkante, extrudiert nach unten. `"+z"`: placement\_z = Unterkante, extrudiert nach oben. |
+| create\_slab\_with\_openings | *Identisch mit Slab*, \+ openings (List\[Dict\]), direction | Erstellt eine Deckenplatte mit vordefinierten Durchbrüchen. Gleiche Richtungs-Semantik wie create\_slab. |
+| create\_wall | p1 \[X,Y,Z\], p2 \[X,Y,Z\], width, height, name, align, align\_to | Erstellt eine gerade Wand zwischen zwei 3D-Punkten (in METERN). align: Left/Center/Right direkt beim Erstellen; align\_to: inside/outside überschreibt align. |
 | join\_walls | walls (List\[Str\]) | Verbindet/Vereinigt mehrere Wände zu einem Objekt. |
 | add\_to\_wall | wall\_name, component\_name | Fügt ein Fenster/eine Tür in eine Wand ein (Host-Beziehung). |
 | align\_wall | wand\_bezeichnung, align, align\_to | Richtet die Wand relativ zur Basislinie aus (Left, Center, Right, inside, outside). |
@@ -129,8 +130,8 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | set\_wall\_alignment | wall, ref\_at\_outside (Bool) | Verschiebt die Referenzlinie an die Außenkante und passt das Align an. |
 | create\_window | wall\_ident, distance\_from\_start, width, height, sill\_height, windowtype, name | Fügt ein Fenster/eine Tür in eine Wand ein. Schneidet die Wand automatisch auf. |
 | create\_window\_sketch | wall\_ident, width, height, sill\_height, name | Erstellt ein benutzerdefiniertes Fenster basierend auf einer Skizze. |
-| create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle, name | Generiert ein Dach aus einem geschlossenen Polygon-Umriss. |
-| create\_stairs | height, width, landing (bool), name | Erstellt eine parametrische Treppe (Arch Stairs). Stufen automatisch via 2h+b=630mm. Optional mit U-förmigem Zwischenpodest. |
+| create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle (Float oder Liste), name | Generiert ein Dach aus einem geschlossenen Polygon-Umriss. angle: Float (alle Flächen) oder Liste pro Kante (Punkt-Reihenfolge; 90 = senkrechter Giebel). Runs/IdRel werden automatisch berechnet; Firsthöhe = Basis-z + Run·tan(angle). |
+| create\_stairs | height, width, landing (bool), name | Erstellt eine parametrische Treppe (Arch Stairs). Stufenanzahl via 2h+b=630mm. Podest (`landing=true`) nutzt Flight/Landings-Properties (FreeCAD ≥ 1.0), U-Form mit Zwischenpodest auf halber Höhe. |
 | create\_opening | base\_object, shape, position \[X,Y,Z\], size \[W,H,D\], name | Erzeugt einen Durchbruch in einem Bauteil via Boolean-Cut. |
 | copy\_to\_floor | source\_walls (List\[Str\]), target\_floor, z\_offset, x\_extension | Kopiert Wände auf ein anderes Geschoss mit Höhenversatz. |
 | create\_attika | roof\_slab, height, thickness, offset, name\_prefix | Generiert automatisch Attika-Umfassungswände entlang einer Dachplatte. |
@@ -177,9 +178,10 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | Tool | Argumente | Beschreibung |
 | :---- | :---- | :---- |
 | set\_ifc\_data | object\_name, properties\_json | Weist Objekten benutzerdefinierte IFC-Eigenschaften (Psets) zu. |
+| set\_ifc\_type | object\_name, ifc\_type | Setzt den IFC-Typ eines Arch-Objekts (z.B. 'Wall', 'Slab', 'Roof', 'Curtain Wall') mit Enum-Validierung. |
 | set\_material | object\_name, material\_name, color\_rgb | Weist ein Material und eine Visualisierungsfarbe (R,G,B) zu. |
 | set\_material\_batch | object\_names (List\[Str\]), material\_name, color\_rgb | Weist mehreren Objekten gleichzeitig das gleiche Material zu. |
-| get\_quantities | object\_name | Berechnet Flächen, Volumen und Massen eines Objekts. |
+| get\_quantities | object\_name | Berechnet Mengen aus der Geometrie (Shape): Volumen, Fläche, Umfang, BBox-Maße. Container ohne Geometrie melden "keine Geometrie". |
 | export\_ifc | file\_path | Exportiert das gesamte Modell als standardisierte BIM-IFC-Datei. (Fallback via Arch.export). |
 | analyze\_ifc | file\_path | Analysiert eine IFC-Datei extern und wirft Projektstatistiken aus. |
 | create\_schedule | object\_type, properties, name | Erstellt eine automatisierte Bauteilliste (Arch Schedule). |
@@ -200,6 +202,8 @@ Der Server registriert eine Vielzahl von Werkzeugen. Hier ist die strukturierte 
 | capture\_view | view\_type ("iso"/"top"/"front"/"right") | **Gibt ein mcp.Image-Objekt (PNG) zurück.** Macht einen Screenshot des aktuellen 3D-Viewports zur visuellen Kontrolle. |
 | validate\_model | *keine* | Validiert das Modell auf Fehler ("Invalid"-Flags), Kollisionen, ungültige Bounding-Boxes und verwaiste Objekte. |
 | validate\_ifc\_export | *keine* | Preflight-Prüfung für fehlende IFC-Daten/Materialien vor dem Export. |
+| recompute | object\_name (opt.) | Berechnet das Dokument (oder ein Objekt) neu und berichtet verbleibende TOUCHED/INVALID-Objekte inkl. betroffener Kinder. |
+| save\_document | path (opt.) | Speichert das aktive Dokument als FCStd (saveAs mit path, sonst save). **Regelmäßig aufrufen!** Pfad muss im erlaubten Arbeitsverzeichnis liegen. |
 | execute\_python | script (Python-Code) | **Sicherheitskritisch.** Führt nativen Python-Code im FreeCAD-Kontext aus. Wird per Qt-Dialog beim Bridge-Start aktiviert/deaktiviert. |
 
 ## **Code-Architektur (mcp\_server.py)**
