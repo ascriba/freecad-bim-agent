@@ -301,11 +301,11 @@ def create_wall(
     width: str = "300mm",
     height: str = "2500mm",
     name: str = "Aussenwand1",
+    align: str = "Center",
+    align_to: str | None = None,
 ) -> str:
     """
     Erstellt eine gerade Wand (Arch Wall) zwischen zwei 3D-Punkten.
-    Die Wand wird immer mit der Ausrichtung (align) "center"
-    auf der Baseline errichtet.
 
 
     Args:
@@ -314,11 +314,15 @@ def create_wall(
         width: Die Dicke der Wand mit Einheit (z.B. '300mm').
         height: Die Höhe der Wand mit Einheit (z.B. '2500mm').
         name: Das sichtbare Label der Wand in FreeCAD.
+        align: 'Left' | 'Center' (Default) | 'Right' — richtungsabhängig zur Wandrichtung (p1→p2).
+        align_to: 'inside' | 'outside' — überschreibt align (Wand-Normale bestimmt die Seite).
     """
     try:
         bridge = get_bridge()
         # Übergabe der Punkte und Maße an deine Bridge
-        return bridge.erstelle_wand_aus_punkten(p1, p2, width, height, name)
+        return bridge.erstelle_wand_aus_punkten(
+            p1, p2, width, height, name, align, align_to
+        )
     except Exception as e:
         return f"Fehler im MCP-Tool beim Erstellen der Wand: {str(e)}"
 

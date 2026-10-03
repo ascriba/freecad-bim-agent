@@ -499,6 +499,40 @@ def t_decke_pz():
 
 test("decke_richtung_pz_check", t_decke_pz, None)
 
+L("--- create_wall align ---")
+test(
+    "wand_align",
+    lambda: bridge.erstelle_wand_aus_punkten(
+        [5, 5, 0], [8, 5, 0], "200mm", "2500mm", "AlignWand", "Left"
+    ),
+    "Erfolgreich:",
+)
+
+
+def t_wand_align():
+    bb = bridge._get_obj("AlignWand").Shape.BoundBox
+    # Wandrichtung Ost (+X): Left = Sueden (-Y) -> Koerper belegt Y 4800..5000
+    if abs(bb.YMin - 4800.0) > 1.0 or abs(bb.YMax - 5000.0) > 1.0:
+        raise AssertionError(f"BBox Y {bb.YMin}..{bb.YMax}, erwartet 4800..5000")
+    return "Left=OK"
+
+
+test("wand_align_check", t_wand_align, None)
+test(
+    "wand_align_to",
+    lambda: bridge.erstelle_wand_aus_punkten(
+        [5, 6, 0], [8, 6, 0], "200mm", "2500mm", "AlignWand2", "Center", "outside"
+    ),
+    "Erfolgreich:",
+)
+test(
+    "wand_align_ungueltig",
+    lambda: bridge.erstelle_wand_aus_punkten(
+        [5, 7, 0], [8, 7, 0], "200mm", "2500mm", "AlignWand3", "Center", "oben"
+    ),
+    "Fehler:",
+)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

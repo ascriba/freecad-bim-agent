@@ -464,7 +464,14 @@ class RobustFreeCADBridge:
             return f"Fehler: {str(e)}"
 
     def erstelle_wand_aus_punkten(
-        self, p1, p2, width="300mm", height="2500mm", name="Wand"
+        self,
+        p1,
+        p2,
+        width="300mm",
+        height="2500mm",
+        name="Wand",
+        align="Center",
+        align_to=None,
     ):
         try:
             import Arch
@@ -493,9 +500,17 @@ class RobustFreeCADBridge:
             wall.Label = name
             wall.IfcType = "Wall"
 
+            # 5. Ausrichtung direkt beim Erstellen (align_to überschreibt align)
+            align = align if align else "Center"
+            if align_to is not None or align != "Center":
+                erg = self.ausrichten_wand(name, align, align_to)
+                if isinstance(erg, str) and erg.startswith("Fehler"):
+                    return erg
+
             doc.recompute()
             return (
-                f"Erfolgreich: Wand '{wall.Label}' wurde von {p1} nach {p2} erstellt."
+                f"Erfolgreich: Wand '{wall.Label}' wurde von {p1} nach {p2} erstellt. "
+                f"Align: {wall.Align} | {self._gate_info(wall)}"
             )
 
         except Exception as e:
