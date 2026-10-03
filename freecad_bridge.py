@@ -1057,74 +1057,35 @@ class RobustFreeCADBridge:
     ):
         try:
             import Arch
-            import Draft
 
             doc = App.ActiveDocument or App.newDocument("BIM")
-
             height_mm = self._parse_unit(hoehe)
             width_mm = self._parse_unit(breite)
 
-            # Stufenberechnung mit Formel 2h + b = 630mm
+            # Stufenberechnung mit Formel 2h + b = 630mm (Idealsteigung 175mm)
             step_height_ideal = 175.0
-            steps_count = max(1, round(height_mm / step_height_ideal))
-            step_height = height_mm / steps_count
-            tread_depth = max(200.0, 630.0 - 2.0 * step_height)
-
-            if podest and steps_count > 2:
-                first_half = steps_count // 2
-                second_half = steps_count - first_half
-                gap = width_mm * 0.5
-                y_offset = int(width_mm * 2 + gap)
-                landing_depth = int(width_mm)
-
-                first_flight_end = tread_depth * first_half
-                second_flight_start = max(
-                    0, first_flight_end - tread_depth * second_half
-                )
-
-                seg1 = Draft.make_wire(
-                    [App.Vector(0, 0, 0), App.Vector(first_flight_end, 0, 0)],
-                    closed=False,
-                )
-                seg1.Label = f"{name}_seg1"
-
-                l1 = App.Vector(first_flight_end, 0, 0)
-                l2 = App.Vector(first_flight_end + landing_depth, 0, 0)
-                l3 = App.Vector(first_flight_end + landing_depth, -y_offset, 0)
-                l4 = App.Vector(first_flight_end, -y_offset, 0)
-                landing = Draft.make_wire([l1, l2, l3, l4], closed=False)
-                landing.Label = f"{name}_podest"
-
-                seg2 = Draft.make_wire(
-                    [
-                        App.Vector(first_flight_end, -y_offset, 0),
-                        App.Vector(second_flight_start, -y_offset, 0),
-                    ],
-                    closed=False,
-                )
-                seg2.Label = f"{name}_seg2"
-
-                baseobjs = [seg1, landing, seg2]
-                total_length = (
-                    first_flight_end
-                    + landing_depth
-                    + (first_flight_end - second_flight_start)
-                )
-            else:
-                total_length = tread_depth * steps_count
-                baseline = Draft.make_wire(
-                    [App.Vector(0, 0, 0), App.Vector(total_length, 0, 0)], closed=False
-                )
-                baseline.Label = f"{name}_baseline"
-                if hasattr(baseline, "ViewObject") and baseline.ViewObject:
-                    baseline.ViewObject.Visibility = False
-                baseobjs = baseline
-
-            treppe = Arch.makeStairs(baseobj=baseobjs, steps=steps_count)
-            treppe.Label = name
-
+            steps_count = max(2, round(height_mm / step_height_ideal))
+            # Neue Arch-Stairs-API: ohne Baseobj entsteht eine gerade Treppe;
+            # Podest/U-Form via Landings/Flight-Properties (FreeCAD >= 1.0)
+            treppe = Arch.makeStairs(
+                width=width_mm, height=height_mm, steps=steps_count, name=name
+            )
+            if podest:
+                if hasattr(treppe, "Flight") and hasattr(treppe, "Landings"):
+                    treppe.Landings = "At center"
+                    treppe.Flight = "HalfTurnLeft"
+                else:
+                    return (
+                        "Fehler: Podest-Treppen erfordern FreeCAD >= 1.0 "
+                        "(Arch Stairs mit Flight/Landings-Properties). "
+                        "Bitte FreeCAD aktualisieren."
+                    )
             doc.recompute()
-            return f"Treppe: {treppe.Label} ({steps_count} Stufen, {step_height:.1f}mm Steigung, {tread_depth:.0f}mm Auftritt)"
+            steigung = height_mm / steps_count
+            return (
+                f"Treppe: {treppe.Label} ({steps_count} Stufen, "
+                f"{steigung:.1f}mm Steigung) | {self._gate_info(treppe)}"
+            )
         except Exception as e:
             return f"Fehler: {str(e)}"
 

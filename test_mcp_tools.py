@@ -692,6 +692,42 @@ test(
     "Fehler:",
 )
 
+L("--- create_stairs (Podest-Hoehe) ---")
+
+
+def t_treppe_gerade():
+    r = bridge.erstelle_treppe("2500mm", "1000mm", False, "GateTreppeGerade")
+    if not r.startswith("Treppe:"):
+        raise AssertionError(r)
+    bb = bridge._get_obj("GateTreppeGerade").Shape.BoundBox
+    # Gate: Hoehe +- 1 Stufe (2500/14 = 178.6)
+    riser = 2500.0 / round(2500.0 / 175.0)
+    if not (2500.0 - riser - 1.0 <= bb.ZMax <= 2500.0 + riser + 1.0):
+        raise AssertionError(
+            f"ZMax {bb.ZMax:.1f} ausserhalb {2500.0 - riser - 1.0:.1f}.."
+            f"{2500.0 + riser + 1.0:.1f}"
+        )
+    return f"ZMax={bb.ZMax:.1f}"
+
+
+test("treppe_gerade", t_treppe_gerade, None)
+
+
+def t_treppe_podest():
+    r = bridge.erstelle_treppe("2800mm", "1200mm", True, "GateTreppePodest")
+    if not r.startswith("Treppe:"):
+        raise AssertionError(r)
+    bb = bridge._get_obj("GateTreppePodest").Shape.BoundBox
+    # Gate: Hoehe +- 1 Stufe (2800/16 = 175)
+    if not (2800.0 - 175.0 - 1.0 <= bb.ZMax <= 2800.0 + 175.0 + 1.0):
+        raise AssertionError(f"ZMax {bb.ZMax:.1f}, erwartet 2624..2976")
+    if bb.ZMax > 2976.0:
+        raise AssertionError("Podest-Variante zu hoch (Original-Bug)")
+    return f"ZMax={bb.ZMax:.1f}"
+
+
+test("treppe_podest", t_treppe_podest, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)
