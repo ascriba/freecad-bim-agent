@@ -473,6 +473,8 @@ class RobustFreeCADBridge:
         align="Center",
         align_to=None,
     ):
+        base_line = None
+        wall = None
         try:
             import Arch
             import Draft
@@ -506,7 +508,7 @@ class RobustFreeCADBridge:
             if align_to is not None or align != "Center":
                 erg = self.ausrichten_wand(name, align, align_to)
                 if isinstance(erg, str) and erg.startswith("Fehler"):
-                    return erg
+                    raise ValueError(erg)
 
             doc.recompute()
             return (
@@ -515,6 +517,17 @@ class RobustFreeCADBridge:
             )
 
         except Exception as e:
+            # Halbfertige Objekte bei Fehlern wieder entfernen
+            try:
+                if wall is not None:
+                    App.ActiveDocument.removeObject(wall.Name)
+                if base_line is not None:
+                    App.ActiveDocument.removeObject(base_line.Name)
+            except Exception:
+                pass
+            # ValueError = Validierungsfehler aus ausrichten_wand ("Fehler: ...")
+            if isinstance(e, ValueError) and str(e).startswith("Fehler:"):
+                return str(e)
             return f"Fehler in Bridge: {str(e)}"
 
     def ausrichten_wand(self, wand_bezeichnung, align="Left", align_to=None):

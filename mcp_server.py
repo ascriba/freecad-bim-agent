@@ -70,13 +70,17 @@ def delete_object(name: str) -> str:
 @mcp.tool()
 def set_position(name: str, x: float = 0.0, y: float = 0.0, z: float = 0.0) -> str:
     """
-    Verschiebt ein Objekt in FreeCAD an eine neue Position (X, Y, Z).
+    Setzt die ABSOLUTE Position eines Objekts (Placement.Base) — im Gegensatz zu move_by (relativ).
+
+    Achtung bei abgeleiteten Objekten (Part::Cut, Part::Mirroring) mit absoluter
+    Geometrie: die Form wird relativ zur Placement verschoben; für Korrekturen
+    um einen Offset move_by verwenden.
 
     Args:
         name: Der Name des Objekts (z.B. 'Box', 'Cylinder')
-        x: X-Koordinate
-        y: Y-Koordinate
-        z: Z-Koordinate
+        x: X-Koordinate in METERN
+        y: Y-Koordinate in METERN
+        z: Z-Koordinate in METERN
     """
     try:
         bridge = get_bridge()

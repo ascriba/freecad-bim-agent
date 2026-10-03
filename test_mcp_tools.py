@@ -536,6 +536,26 @@ test(
     "Fehler:",
 )
 
+
+def t_wand_align_ungueltig_aufgeraeumt():
+    # Bei Align-Fehler darf keine halbfertige Wand (noch Baseline) bleiben
+    if bridge._get_obj("AlignWand3") is not None:
+        raise AssertionError("Halbfertige Wand 'AlignWand3' nicht aufgeraeumt")
+    for o in App.ActiveDocument.Objects:
+        vs = getattr(getattr(o, "Shape", None), "Vertexes", [])
+        if len(vs) == 2:
+            p1, p2 = vs[0].Point, vs[-1].Point
+            if (
+                abs(p1.x - 5000.0) < 0.01
+                and abs(p1.y - 7000.0) < 0.01
+                and abs(p2.x - 8000.0) < 0.01
+            ):
+                raise AssertionError(f"Baseline '{o.Label}' nicht aufgeraeumt")
+    return "Aufgeraeumt OK"
+
+
+test("wand_align_ungueltig_aufgeraeumt", t_wand_align_ungueltig_aufgeraeumt, None)
+
 L("--- set_ifc_type ---")
 test(
     "ifc_type_ok",
