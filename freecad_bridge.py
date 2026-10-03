@@ -1223,13 +1223,20 @@ class RobustFreeCADBridge:
                 dir_vec = App.Vector(0, 1, 0)
             else:
                 dir_vec = App.Vector(0, 0, 1)
+
+            def _mm(v):
+                # Floats = Meter (konsistent zu set_position), Strings = Einheit
+                return (
+                    v * 1000.0 if isinstance(v, (int, float)) else self._parse_unit(v)
+                )
+
             mirrored = doc.addObject("Part::Mirroring", "Gespiegelt")
             mirrored.Source = src
             mirrored.Normal = dir_vec
-            mirrored.Base = App.Vector(x, y, z)
+            mirrored.Base = App.Vector(_mm(x), _mm(y), _mm(z))
             mirrored.Label = neuer_name
             doc.recompute()
-            return f"Gespiegelt: {mirrored.Label}"
+            return f"Gespiegelt: {mirrored.Label} | {self._gate_info(mirrored)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 

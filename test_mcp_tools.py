@@ -338,6 +338,34 @@ def t_move_by_cut():
 
 test("move_by_cut_check", t_move_by_cut, None)
 
+L("--- mirror_object (Meter) ---")
+test("mirror_kugel", lambda: bridge.erstelle_kugel("100mm"), "Erfolg:")
+for o in App.ActiveDocument.Objects:
+    if o.Label.startswith("Kugel") and o.Name != "Kugel":
+        bridge.umbenennen_objekt(o.Name, "MirrorKugel")
+        break
+test(
+    "mirror_pos",
+    lambda: bridge.setze_position("MirrorKugel", 0.0, 0.0, 0.0),
+    "Position",
+)
+
+
+def t_mirror():
+    r = bridge.spiegele_objekt("MirrorKugel", "X", 4.0, 0.0, 0.0, "MirrorErgebnis")
+    if not r.startswith("Gespiegelt:"):
+        raise AssertionError(r)
+    bb = bridge._get_obj("MirrorErgebnis").Shape.BoundBox
+    # Spiegelebene muss bei x=4000mm liegen -> Zentrum des Spiegelbilds bei 8000mm
+    if abs((bb.XMin + bb.XMax) / 2.0 - 8000.0) > 0.01:
+        raise AssertionError(
+            f"Zentrum X {(bb.XMin + bb.XMax) / 2.0:.1f}, erwartet 8000.0"
+        )
+    return "Spiegelachse OK"
+
+
+test("mirror_check", t_mirror, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

@@ -872,9 +872,9 @@ def mirror_object(
     Args:
         source_name: Name oder Label des zu spiegelnden Objekts.
         axis: Spiegelachse ('X', 'Y' oder 'Z').
-        origin_x: X-Koordinate des Spiegelursprungs.
-        origin_y: Y-Koordinate des Spiegelursprungs.
-        origin_z: Z-Koordinate des Spiegelursprungs.
+        origin_x: X-Koordinate des Spiegelursprungs in METERN (alternativ Einheiten-String wie '4000mm').
+        origin_y: Y-Koordinate des Spiegelursprungs in METERN (alternativ Einheiten-String).
+        origin_z: Z-Koordinate des Spiegelursprungs in METERN (alternativ Einheiten-String).
         new_name: Label des gespiegelten Objekts.
     """
     try:
