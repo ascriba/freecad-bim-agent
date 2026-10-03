@@ -501,6 +501,7 @@ class RobustFreeCADBridge:
             wall.IfcType = "Wall"
 
             # 5. Ausrichtung direkt beim Erstellen (align_to überschreibt align)
+            doc.recompute()  # Baseline-Shape braucht ein recompute für Vertexes
             align = align if align else "Center"
             if align_to is not None or align != "Center":
                 erg = self.ausrichten_wand(name, align, align_to)
