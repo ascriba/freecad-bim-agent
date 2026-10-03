@@ -1764,6 +1764,34 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
+    def setze_ifc_typ(self, obj_name, ifc_type):
+        try:
+            obj = self._get_obj(obj_name)
+            if not obj:
+                return "Nicht gefunden."
+            if not hasattr(obj, "IfcType"):
+                return (
+                    f"Fehler: Objekt '{obj.Label}' (Typ {obj.TypeId}) hat keine "
+                    "IfcType-Property. Nur Arch-Objekte (Wand, Slab, Panel, "
+                    "Fenster, ...) unterstuetzen IfcType."
+                )
+            ifc_type = str(ifc_type).strip()
+            enum = None
+            try:
+                enum = obj.getEnumerationsOfProperty("IfcType")
+            except Exception:
+                pass
+            if enum and ifc_type not in enum:
+                return (
+                    f"Fehler: Ungültiger IfcType '{ifc_type}'. "
+                    f"Gültig: {', '.join(enum)}"
+                )
+            obj.IfcType = ifc_type
+            App.ActiveDocument.recompute()
+            return f"IfcType gesetzt: {obj.Label} -> '{ifc_type}'"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
     def setze_material(self, obj_name, material_name, color_rgb=(0.8, 0.8, 0.8)):
         try:
             obj = self._get_obj(obj_name)

@@ -533,6 +533,30 @@ test(
     "Fehler:",
 )
 
+L("--- set_ifc_type ---")
+test(
+    "ifc_type_ok",
+    lambda: bridge.setze_ifc_typ("AlignWand", "Curtain Wall"),
+    "IfcType gesetzt:",
+)
+
+
+def t_ifc_type_ok():
+    if str(bridge._get_obj("AlignWand").IfcType) != "Curtain Wall":
+        raise AssertionError("IfcType nicht uebernommen")
+    # zuruecksetzen fuer Folgetests
+    bridge.setze_ifc_typ("AlignWand", "Wall")
+    return "OK"
+
+
+test("ifc_type_check", t_ifc_type_ok, None)
+test(
+    "ifc_type_ungueltig",
+    lambda: bridge.setze_ifc_typ("AlignWand", "KeinGueltigerTyp"),
+    "Fehler:",
+)
+test("ifc_type_ohne_prop", lambda: bridge.setze_ifc_typ("Wuerfel", "Wall"), "Fehler:")
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

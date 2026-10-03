@@ -510,6 +510,23 @@ def set_ifc_data(object_name: str, properties_json: str = "{}") -> str:
 
 
 @mcp.tool()
+def set_ifc_type(object_name: str, ifc_type: str) -> str:
+    """
+    Sets the IFC type of an Arch object (e.g. 'Wall', 'Slab', 'Roof', 'Curtain Wall', 'Door').
+    Only valid for objects with an IfcType property.
+
+    Args:
+        object_name: Name or label of the object.
+        ifc_type: Valid IFC type of the object's IfcType enumeration.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.setze_ifc_typ(object_name, ifc_type)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+
+@mcp.tool()
 def set_material(
     object_name: str, material_name: str, color_rgb: str = "(0.8, 0.8, 0.8)"
 ) -> str:
