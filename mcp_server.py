@@ -689,17 +689,21 @@ def create_roof(
     basewire: list[list[float]],
     overhang: str = "500mm",
     thickness: str = "100mm",
-    angle: float = 30.0,
+    angle: float | list[float] = 30.0,
     name: str = "Dach",
 ) -> str:
     """
     Erstellt ein Dach (Arch Roof) aus einem geschlossenen Linienzug.
+    Firsthoehe je Flaeche = Basis-z + Run * tan(Winkel); Runs werden automatisch
+    aus der halben Distanz zur parallelen Gegenseite berechnet.
 
     Args:
         basewire: Liste von [X,Y,Z]-Punkten in METERN für den Dachumriss (z.B. [[0,0,0], [5,0,0], [5,4,0], [0,4,0]]).
         overhang: Dachüberstand mit Einheit (z.B. '500mm').
         thickness: Dicke der Dachdeckung mit Einheit (z.B. '100mm').
-        angle: Dachneigung in Grad (z.B. 30.0).
+        angle: Dachneigung in Grad — float (alle Flächen) ODER Liste
+               (ein Winkel pro Umriss-Kante, Reihenfolge wie basewire-Punkte;
+               90 = senkrechte Giebelfläche, nur mit angrenzender geneigter Kante darstellbar).
         name: Label des Dachs in FreeCAD.
     """
     try:

@@ -925,29 +925,131 @@ class RobustFreeCADBridge:
     def erstelle_dach(
         self, punkte, ueberstand="500mm", dicke="100mm", winkel=30.0, name="Dach"
     ):
+        draht = None
+        dach = None
         try:
             import Arch, Draft
+            import Part
+            import math
 
             doc = App.ActiveDocument or App.newDocument("BIM")
             punkte_vektoren = [self.to_vector(p) for p in punkte]
+            if len(punkte_vektoren) < 3:
+                raise ValueError("Dachumriss braucht mindestens 3 Punkte.")
             draht = Draft.makeWire(punkte_vektoren, closed=True)
             if hasattr(draht, "ViewObject") and draht.ViewObject:
                 draht.ViewObject.Visibility = False
             doc.recompute()
             dach = Arch.makeRoof(draht)
             dach.Label = name
-            if hasattr(dach, "Thickness"):
-                dach.Thickness = [self._parse_unit(dicke)]
-            if hasattr(dach, "Overhang"):
-                dach.Overhang = [self._parse_unit(ueberstand)]
-            if hasattr(dach, "Angles"):
-                anzahl_flaechen = len(dach.Angles)
-                dach.Angles = (
-                    [winkel] * anzahl_flaechen if anzahl_flaechen > 0 else [winkel]
-                )
+
+            kanten = Part.__sortEdges__(draht.Shape.Wires[0].Edges)
+            n = len(kanten)
+
+            # Winkel je sortierter Kante:
+            # float -> alle Flächen; Liste -> Punkt-Reihenfolge auf Kanten mappen
+            if isinstance(winkel, (list, tuple)):
+                if len(winkel) != len(punkte_vektoren):
+                    raise ValueError(
+                        f"Winkelliste hat {len(winkel)} Einträge, der Umriss hat "
+                        f"{len(punkte_vektoren)} Kanten."
+                    )
+                winkel_seg = [float(w) for w in winkel]
+                winkel_kanten = []
+                tol = 1e-6
+                for e in kanten:
+                    p1, p2 = e.Vertexes[0].Point, e.Vertexes[-1].Point
+                    seg_idx = None
+                    for i in range(len(punkte_vektoren)):
+                        a = punkte_vektoren[i]
+                        b = punkte_vektoren[(i + 1) % len(punkte_vektoren)]
+                        if (
+                            p1.distanceToPoint(a) < tol and p2.distanceToPoint(b) < tol
+                        ) or (
+                            p1.distanceToPoint(b) < tol and p2.distanceToPoint(a) < tol
+                        ):
+                            seg_idx = i
+                            break
+                    if seg_idx is None:
+                        raise ValueError(
+                            "Kanten konnten dem Umriss nicht zugeordnet werden."
+                        )
+                    winkel_kanten.append(winkel_seg[seg_idx])
+            else:
+                winkel_kanten = [float(winkel)] * n
+
+            for w in winkel_kanten:
+                if w <= 0.0 or w > 90.0:
+                    raise ValueError(
+                        "Winkel muss zwischen 0 und 90 Grad liegen "
+                        "(90 = senkrechte Giebelflaeche)."
+                    )
+
+            # Runs (horizontale Projektion) und IdRel je Kante:
+            # Arch Roof berechnet Firsthoehe = Runs[i] * tan(Angles[i]).
+            # Ohne Runs bleibt die Geometrie beim Default haengen (Bug 1.1).
+            runs = [0.0] * n
+            idrel = [-1] * n
+            for i in range(n):
+                a_i = winkel_kanten[i]
+                if a_i == 90.0:
+                    # Senkrechte Giebelflaeche: Hoehe von angrenzender
+                    # geneigter Flaeche erben (IdRel)
+                    nachbarn = [(i - 1) % n, (i + 1) % n]
+                    rel = next(
+                        (j for j in nachbarn if 0.0 < winkel_kanten[j] < 90.0),
+                        None,
+                    )
+                    if rel is None:
+                        raise ValueError(
+                            "Senkrechte Giebelflaeche (90 Grad) ohne angrenzende "
+                            "geneigte Flaeche nicht darstellbar. Der Giebelkante "
+                            "muss mindestens eine Nachbarkante mit 0 < Winkel < 90 "
+                            "zugeordnet sein."
+                        )
+                    idrel[i] = rel
+                else:
+                    vec_i = (
+                        kanten[i].Vertexes[-1].Point.sub(kanten[i].Vertexes[0].Point)
+                    )
+                    best = None
+                    for j in range(n):
+                        if j == i:
+                            continue
+                        vec_j = (
+                            kanten[j]
+                            .Vertexes[-1]
+                            .Point.sub(kanten[j].Vertexes[0].Point)
+                        )
+                        if abs(vec_i.getAngle(vec_j) - math.pi) < 1e-6:
+                            dis = (
+                                kanten[i]
+                                .Vertexes[0]
+                                .Point.distanceToLine(
+                                    kanten[j].Vertexes[0].Point, vec_j
+                                )
+                            )
+                            if best is None or dis < best:
+                                best = dis
+                    # Auto-Run: halbe Distanz zur naechsten parallelen Gegenseite
+                    runs[i] = (best / 2.0) if best else 500.0
+
+            dach.Angles = winkel_kanten
+            dach.Runs = runs
+            dach.IdRel = idrel
+            dach.Thickness = [self._parse_unit(dicke)] * n
+            dach.Overhang = [self._parse_unit(ueberstand)] * n
             doc.recompute()
-            return f"Dach: {dach.Label}"
+            return f"Dach: {dach.Label} | {self._gate_info(dach)}"
         except Exception as e:
+            # Halbfertige Objekte bei Fehlern wieder entfernen
+            try:
+                if dach is not None:
+                    App.ActiveDocument.removeObject(dach.Name)
+                if draht is not None:
+                    App.ActiveDocument.removeObject(draht.Name)
+            except Exception:
+                pass
             return f"Fehler: {str(e)}"
 
     def erstelle_treppe(

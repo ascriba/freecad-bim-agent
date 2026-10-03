@@ -1,4 +1,7 @@
-import sys, os
+import math
+import sys
+
+import os
 
 if not hasattr(App, "_RobustFreeCADBridge"):
     P = "/home/arne/Programmierung/OpenCode/Freecad/freecad_bridge.py"
@@ -607,6 +610,87 @@ def t_recompute_obj():
 
 test("recompute_obj", t_recompute_obj, None)
 test("recompute_nicht_gefunden", lambda: bridge.rekalkuliere("GibtEsNicht"), "Fehler:")
+
+L("--- create_roof (Winkel/Firsthoehe) ---")
+
+
+def t_dach_walm():
+    r = bridge.erstelle_dach(
+        [[0, 0, 5.5], [10, 0, 5.5], [10, 8, 5.5], [0, 8, 5.5]],
+        "0mm",
+        "200mm",
+        35.0,
+        "GateDachWalm",
+    )
+    if not r.startswith("Dach:"):
+        raise AssertionError(r)
+    bb = bridge._get_obj("GateDachWalm").Shape.BoundBox
+    soll = 5500 + 4000 * math.tan(math.radians(35)) + 200 / math.cos(math.radians(35))
+    if abs(bb.ZMax - soll) > 5.0:
+        raise AssertionError(f"ZMax {bb.ZMax:.1f}, Soll {soll:.1f}")
+    return f"ZMax={bb.ZMax:.1f} (Soll {soll:.1f})"
+
+
+test("dach_walmdach", t_dach_walm, None)
+
+
+def t_dach_sattel():
+    r = bridge.erstelle_dach(
+        [[0, 0, 5.5], [10, 0, 5.5], [10, 8, 5.5], [0, 8, 5.5]],
+        "0mm",
+        "200mm",
+        [35.0, 90.0, 35.0, 90.0],
+        "GateDachSattel",
+    )
+    if not r.startswith("Dach:"):
+        raise AssertionError(r)
+    o = bridge._get_obj("GateDachSattel")
+    bb = o.Shape.BoundBox
+    soll = 5500 + 4000 * math.tan(math.radians(35)) + 200 / math.cos(math.radians(35))
+    if abs(bb.ZMax - soll) > 5.0:
+        raise AssertionError(f"ZMax {bb.ZMax:.1f}, Soll {soll:.1f}")
+    if len(o.Shape.Faces) != 8:
+        raise AssertionError(
+            f"Faces {len(o.Shape.Faces)}, erwartet 8 "
+            "(2 Bahnen je 2 + 2 Giebel vorn/hinten)"
+        )
+    return f"Faces={len(o.Shape.Faces)}, ZMax={bb.ZMax:.1f}"
+
+
+test("dach_satteldach", t_dach_sattel, None)
+test(
+    "dach_alle90",
+    lambda: bridge.erstelle_dach(
+        [[0, 0, 5.5], [10, 0, 5.5], [10, 8, 5.5], [0, 8, 5.5]],
+        "0mm",
+        "200mm",
+        90.0,
+        "GateDach90",
+    ),
+    "Fehler:",
+)
+test(
+    "dach_listenlaenge",
+    lambda: bridge.erstelle_dach(
+        [[0, 0, 0], [5, 0, 0], [5, 4, 0], [0, 4, 0]],
+        "0mm",
+        "100mm",
+        [30.0, 30.0],
+        "GateDachListe",
+    ),
+    "Fehler:",
+)
+test(
+    "dach_winkel_negativ",
+    lambda: bridge.erstelle_dach(
+        [[0, 0, 0], [5, 0, 0], [5, 4, 0], [0, 4, 0]],
+        "0mm",
+        "100mm",
+        -5.0,
+        "GateDachNeg",
+    ),
+    "Fehler:",
+)
 
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
