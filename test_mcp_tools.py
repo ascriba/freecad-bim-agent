@@ -398,14 +398,31 @@ def t_mengen():
 test("mengen_check", t_mengen, None)
 
 
-def t_mengen_container():
-    r = bridge.ermittle_mengen("TestEG")
+def t_mengen_shapeless():
+    # App::MaterialObject ist wirklich shapeless -> klare Meldung statt Fake-Werte
+    r = bridge.ermittle_mengen("MengenMaterialObj")
     if "keine Geometrie" not in r:
-        raise AssertionError(f"Container-Meldung fehlt: {r}")
-    return "Container OK"
+        raise AssertionError(f"Shapeless-Meldung fehlt: {r}")
+    return "Shapeless OK"
 
 
-test("mengen_container", t_mengen_container, None)
+test(
+    "mengen_material_erstellen",
+    lambda: bridge.setze_material("Wuerfel", "MengenMaterialObj", (0.5, 0.5, 0.5)),
+    "Material",
+)
+test("mengen_shapeless", t_mengen_shapeless, None)
+
+
+def t_mengen_floor():
+    # Arch Floor hat eine echte Shape (aggregiert Kinder) -> echte Mengen, keine Defaults
+    r = bridge.ermittle_mengen("TestEG")
+    if "Volume" not in r:
+        raise AssertionError(f"Floor-Aggregat-Mengen fehlen: {r}")
+    return "Floor OK"
+
+
+test("mengen_floor", t_mengen_floor, None)
 
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
