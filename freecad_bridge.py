@@ -122,6 +122,21 @@ class RobustFreeCADBridge:
         except:
             pass
 
+    def _gate_info(self, obj):
+        """Gate-Daten (BBox/Volume) für Tool-Antworten."""
+        try:
+            if hasattr(obj, "Shape") and obj.Shape and not obj.Shape.isNull():
+                bb = obj.Shape.BoundBox
+                return (
+                    f"BBox: X({bb.XMin:.1f}..{bb.XMax:.1f}) "
+                    f"Y({bb.YMin:.1f}..{bb.YMax:.1f}) "
+                    f"Z({bb.ZMin:.1f}..{bb.ZMax:.1f}), "
+                    f"Volume: {obj.Shape.Volume * 1e-9:.3f} m3"
+                )
+        except Exception:
+            pass
+        return ""
+
     def to_vector(self, p):
         try:
             if hasattr(p, "x"):

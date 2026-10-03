@@ -249,6 +249,20 @@ test(
     "Decke",
 )
 
+L("--- Gate-Helper ---")
+
+
+def t_gate_info():
+    info = bridge._gate_info(bridge._get_obj("Wuerfel"))
+    if "BBox:" not in info or "Volume:" not in info:
+        raise AssertionError(f"Gate-Info unvollstaendig: {info!r}")
+    if "m3" not in info:
+        raise AssertionError(f"Keine m3-Angabe: {info!r}")
+    return info[:60]
+
+
+test("gate_info", t_gate_info, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)
