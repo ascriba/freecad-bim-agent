@@ -263,6 +263,81 @@ def t_gate_info():
 
 test("gate_info", t_gate_info, None)
 
+L("--- move_by ---")
+test(
+    "move_by_vorbereiten",
+    lambda: bridge.erstelle_wuerfel("100mm", "100mm", "100mm"),
+    "Erfolg:",
+)
+for o in App.ActiveDocument.Objects:
+    if (
+        o.Label.startswith("Wuerfel")
+        and o.Name != "Wuerfel"
+        and o.Label != "TestWuerfel"
+    ):
+        bridge.umbenennen_objekt(o.Name, "MoveByTest")
+        break
+test(
+    "move_by_setzen",
+    lambda: bridge.setze_position("MoveByTest", 0.0, 0.0, 0.1),
+    "Position",
+)
+
+
+def t_move_by():
+    r = bridge.verschiebe_objekt("MoveByTest", 0.0, 0.0, 0.2)
+    if not r.startswith("Verschoben:"):
+        raise AssertionError(r)
+    bb = bridge._get_obj("MoveByTest").Shape.BoundBox
+    # Part::Box: Placement.Base z=300 -> Box belegt 300..400
+    if abs(bb.ZMin - 300.0) > 0.01 or abs(bb.ZMax - 400.0) > 0.01:
+        raise AssertionError(f"BBox Z {bb.ZMin}..{bb.ZMax}, erwartet 300..400")
+    return "BBox OK"
+
+
+test("move_by", t_move_by, None)
+# move_by auf abgeleitetem Objekt (Part::Cut, absolute Geometrie)
+test(
+    "move_by_cut_base",
+    lambda: bridge.erstelle_wuerfel("200mm", "200mm", "200mm"),
+    "Erfolg:",
+)
+for o in App.ActiveDocument.Objects:
+    if (
+        o.Label.startswith("Wuerfel")
+        and o.Name != "Wuerfel"
+        and o.Label not in ("TestWuerfel", "MoveByTest")
+    ):
+        bridge.umbenennen_objekt(o.Name, "MoveByCutBase")
+        break
+test("move_by_cut_tool", lambda: bridge.erstelle_zylinder("30mm", "300mm"), "Erfolg:")
+for o in App.ActiveDocument.Objects:
+    if o.Label.startswith("Zylinder") and o.Name != "Zylinder":
+        bridge.umbenennen_objekt(o.Name, "MoveByCutTool")
+        break
+test(
+    "move_by_cut", lambda: bridge.bool_cut("MoveByCutBase", "MoveByCutTool"), "Schnitt:"
+)
+schnitt_name = None
+for o in App.ActiveDocument.Objects:
+    if o.Name.startswith("Schnitt"):
+        schnitt_name = o.Name
+
+
+def t_move_by_cut():
+    bridge.setze_position(schnitt_name, 0.0, 0.0, 0.0)
+    bb0 = bridge._get_obj(schnitt_name).Shape.BoundBox
+    r = bridge.verschiebe_objekt(schnitt_name, 0.0, 0.0, -0.2)
+    bb1 = bridge._get_obj(schnitt_name).Shape.BoundBox
+    if not r.startswith("Verschoben:"):
+        raise AssertionError(r)
+    if abs((bb1.ZMin - bb0.ZMin) + 200.0) > 0.01:
+        raise AssertionError(f"Delta ZMin {(bb1.ZMin - bb0.ZMin):.1f}, erwartet -200.0")
+    return "Cut-Shift OK"
+
+
+test("move_by_cut_check", t_move_by_cut, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

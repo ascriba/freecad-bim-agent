@@ -303,7 +303,27 @@ class RobustFreeCADBridge:
             z_mm = z * 1000.0 if isinstance(z, (int, float)) else self._parse_unit(z)
             obj.Placement.Base = App.Vector(x_mm, y_mm, z_mm)
             App.ActiveDocument.recompute()
-            return "Position gesetzt."
+            return f"Position gesetzt. | {self._gate_info(obj)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def verschiebe_objekt(self, name, dx=0.0, dy=0.0, dz=0.0):
+        """Verschiebt ein Objekt RELATIV (Offset). Zahlen = Meter."""
+        try:
+            obj = self._get_obj(name)
+            if not obj:
+                return "Nicht gefunden."
+
+            def _mm(v):
+                return (
+                    v * 1000.0 if isinstance(v, (int, float)) else self._parse_unit(v)
+                )
+
+            obj.Placement.Base = obj.Placement.Base + App.Vector(
+                _mm(dx), _mm(dy), _mm(dz)
+            )
+            App.ActiveDocument.recompute()
+            return f"Verschoben: {obj.Label} | {self._gate_info(obj)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
