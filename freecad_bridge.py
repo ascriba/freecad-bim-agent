@@ -2616,7 +2616,13 @@ class RobustFreeCADBridge:
 
     def run_python(self, script):
         if not getattr(self, "_execute_python_erlaubt", False):
-            return "Fehler: execute_python ist deaktiviert. FreeCAD neustarten und beim Bridge-Start aktivieren."
+            return (
+                "Fehler: execute_python ist deaktiviert. "
+                "Beim Bridge-Start (start_bridge in der FreeCAD-Konsole) erscheint "
+                "ein Sicherheitsdialog — dort mit 'Ja' bestätigen. "
+                "Nachträgliches Aktivieren erfordert einen FreeCAD-Neustart mit "
+                "erneutem Bridge-Start."
+            )
         try:
             import FreeCADGui as Gui
             import io, sys, traceback

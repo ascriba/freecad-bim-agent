@@ -728,6 +728,19 @@ def t_treppe_podest():
 
 test("treppe_podest", t_treppe_podest, None)
 
+L("--- execute_python-Meldung ---")
+
+
+def t_py_deaktiviert():
+    bridge._execute_python_erlaubt = False
+    r = bridge.run_python("print('x')")
+    if "Sicherheitsdialog" not in r or not r.startswith("Fehler"):
+        raise AssertionError(r[:80])
+    return "Meldung OK"
+
+
+test("execute_python_meldung", t_py_deaktiviert, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)
