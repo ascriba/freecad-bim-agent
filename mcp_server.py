@@ -255,15 +255,26 @@ def create_slab(
     placement_x: str = "0mm",
     placement_y: str = "0mm",
     placement_z: str = "0mm",
+    direction: str = "-z",
 ) -> str:
     """
     Erstellt eine Slab (Bodenplatte).
-    Die Slab wird immer in Richtung -z (nach unten) extrudiert!
+
+    Args:
+        direction: '-z' (Default) extrudiert nach unten — placement_z ist die OBERKANTE.
+                   '+z' extrudiert nach oben — placement_z ist die UNTERKANTE.
     """
     try:
         bridge = get_bridge()
         return bridge.erstelle_bodenplatte(
-            length, width, height, name, placement_x, placement_y, placement_z
+            length,
+            width,
+            height,
+            name,
+            placement_x,
+            placement_y,
+            placement_z,
+            direction,
         )
     except Exception as e:
         return f"Fehler: {str(e)}"
@@ -1392,6 +1403,7 @@ def create_slab_with_openings(
     placement_z: str = "0mm",
     openings: list[dict] = None,
     name: str = "Geschossdecke",
+    direction: str = "-z",
 ) -> str:
     """
     Erstellt eine Geschossdecke mit rechteckigen Durchbrüchen in einem Schritt.
@@ -1404,16 +1416,26 @@ def create_slab_with_openings(
         height: Dicke der Decke als String (z.B. '300mm').
         placement_x: X-Platzierung.
         placement_y: Y-Platzierung.
-        placement_z: Z-Platzierung (Oberkante).
+        placement_z: Z-Platzierung (bei direction='-z' die Oberkante, bei '+z' die Unterkante).
         openings: Liste von Öffnungs-Dicts mit x,y,w,h in METERN.
         name: Label der Decke.
+        direction: '-z' (Default) extrudiert nach unten — placement_z ist die OBERKANTE.
+                   '+z' extrudiert nach oben — placement_z ist die UNTERKANTE.
     """
     if openings is None:
         openings = []
     try:
         bridge = get_bridge()
         return bridge.erstelle_decke_mit_oeffnungen(
-            length, width, height, placement_x, placement_y, placement_z, openings, name
+            length,
+            width,
+            height,
+            placement_x,
+            placement_y,
+            placement_z,
+            openings,
+            name,
+            direction,
         )
     except Exception as e:
         return f"Fehler: {str(e)}"

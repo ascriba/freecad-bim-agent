@@ -422,6 +422,83 @@ def t_mengen_floor():
 
 test("mengen_floor", t_mengen_floor, None)
 
+L("--- Slab-Richtung ---")
+test(
+    "slab_richtung_sz",
+    lambda: bridge.erstelle_bodenplatte(
+        "2m", "2m", "300mm", "SlabMinusZ", "0mm", "0mm", "1000mm", "-z"
+    ),
+    "Slab:",
+)
+
+
+def t_slab_sz():
+    bb = bridge._get_obj("SlabMinusZ").Shape.BoundBox
+    if abs(bb.ZMin - 700.0) > 0.5 or abs(bb.ZMax - 1000.0) > 0.5:
+        raise AssertionError(f"-z: Z {bb.ZMin}..{bb.ZMax}, erwartet 700..1000")
+    return "OK"
+
+
+test("slab_richtung_sz_check", t_slab_sz, None)
+test(
+    "slab_richtung_pz",
+    lambda: bridge.erstelle_bodenplatte(
+        "2m", "2m", "300mm", "SlabPlusZ", "0mm", "0mm", "1000mm", "+z"
+    ),
+    "Slab:",
+)
+
+
+def t_slab_pz():
+    bb = bridge._get_obj("SlabPlusZ").Shape.BoundBox
+    if abs(bb.ZMin - 1000.0) > 0.5 or abs(bb.ZMax - 1300.0) > 0.5:
+        raise AssertionError(f"+z: Z {bb.ZMin}..{bb.ZMax}, erwartet 1000..1300")
+    return "OK"
+
+
+test("slab_richtung_pz_check", t_slab_pz, None)
+test(
+    "slab_richtung_ungueltig",
+    lambda: bridge.erstelle_bodenplatte(
+        "1m", "1m", "100mm", "SlabBad", "0mm", "0mm", "0mm", "oben"
+    ),
+    "Fehler:",
+)
+test(
+    "decke_richtung_sz",
+    lambda: bridge.erstelle_decke_mit_oeffnungen(
+        "2m", "2m", "300mm", "0mm", "0mm", "1000mm", [], "DeckeMinusZ", "-z"
+    ),
+    "Decke",
+)
+
+
+def t_decke_sz():
+    bb = bridge._get_obj("DeckeMinusZ").Shape.BoundBox
+    if abs(bb.ZMin - 700.0) > 0.5 or abs(bb.ZMax - 1000.0) > 0.5:
+        raise AssertionError(f"Decke -z: Z {bb.ZMin}..{bb.ZMax}, erwartet 700..1000")
+    return "OK"
+
+
+test("decke_richtung_sz_check", t_decke_sz, None)
+test(
+    "decke_richtung_pz",
+    lambda: bridge.erstelle_decke_mit_oeffnungen(
+        "2m", "2m", "300mm", "0mm", "0mm", "1000mm", [], "DeckePlusZ", "+z"
+    ),
+    "Decke",
+)
+
+
+def t_decke_pz():
+    bb = bridge._get_obj("DeckePlusZ").Shape.BoundBox
+    if abs(bb.ZMin - 1000.0) > 0.5 or abs(bb.ZMax - 1300.0) > 0.5:
+        raise AssertionError(f"Decke +z: Z {bb.ZMin}..{bb.ZMax}, erwartet 1000..1300")
+    return "OK"
+
+
+test("decke_richtung_pz_check", t_decke_pz, None)
+
 L("--- Validation ---")
 test("validate_model", lambda: bridge.modell_validieren(), None)
 test("validate_ifc_export", lambda: bridge.validiere_ifc_export(), None)

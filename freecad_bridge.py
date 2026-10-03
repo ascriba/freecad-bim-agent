@@ -425,10 +425,16 @@ class RobustFreeCADBridge:
         placement_x="0mm",
         placement_y="0mm",
         placement_z="0mm",
+        direction="-z",
     ):
         try:
             import Arch, Draft
 
+            if direction not in ("-z", "+z"):
+                return (
+                    f"Fehler: Unbekannte Richtung '{direction}'. Erlaubt: "
+                    "'-z' (placement_z=Oberkante) oder '+z' (placement_z=Unterkante)."
+                )
             doc = App.ActiveDocument or App.newDocument("BIM")
             rect = Draft.makeRectangle(
                 self._parse_unit(length), self._parse_unit(width)
@@ -440,7 +446,7 @@ class RobustFreeCADBridge:
             h_val = self._parse_unit(height)
             slab.Height = h_val
             slab.touch()
-            slab.Normal = (0, 0, -1)
+            slab.Normal = (0, 0, -1) if direction == "-z" else (0, 0, 1)
             slab.Label = name
             slab.Placement.Base = App.Vector(
                 self._parse_unit(placement_x),
@@ -453,7 +459,7 @@ class RobustFreeCADBridge:
                 slab.Height = str(h_val)
                 slab.touch()
                 doc.recompute()
-            return f"Slab: {slab.Label}"
+            return f"Slab: {slab.Label} | {self._gate_info(slab)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -2182,10 +2188,16 @@ class RobustFreeCADBridge:
         pz="0mm",
         oeffnungen=None,
         name="Geschossdecke",
+        richtung="-z",
     ):
         try:
             if oeffnungen is None:
                 oeffnungen = []
+            if richtung not in ("-z", "+z"):
+                return (
+                    f"Fehler: Unbekannte Richtung '{richtung}'. Erlaubt: "
+                    "'-z' (placement_z=Oberkante) oder '+z' (placement_z=Unterkante)."
+                )
             doc = App.ActiveDocument or App.newDocument("BIM")
             l = self._parse_unit(laenge)
             b = self._parse_unit(breite)
@@ -2195,7 +2207,12 @@ class RobustFreeCADBridge:
             pz_mm = self._parse_unit(pz)
             slab = doc.addObject("Part::Box", "SlabBase")
             slab.Length, slab.Width, slab.Height = l, b, h
-            slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm)
+            if richtung == "-z":
+                slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm - h)
+                tool_z = pz_mm - h - 5.0
+            else:
+                slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm)
+                tool_z = pz_mm - 5.0
             current = slab
             for i, o in enumerate(oeffnungen):
                 ox = o["x"] * 1000.0
@@ -2204,7 +2221,7 @@ class RobustFreeCADBridge:
                 oh = o["h"] * 1000.0
                 tool = doc.addObject("Part::Box", f"OpeningTool_{i}")
                 tool.Length, tool.Width, tool.Height = ow, oh, h + 10.0
-                tool.Placement.Base = App.Vector(px_mm + ox, py_mm + oy, pz_mm - 5.0)
+                tool.Placement.Base = App.Vector(px_mm + ox, py_mm + oy, tool_z)
                 cut = doc.addObject("Part::Cut", f"SlabCut_{i}")
                 cut.Base, cut.Tool = current, tool
                 if hasattr(current, "ViewObject") and current.ViewObject:
@@ -2214,7 +2231,10 @@ class RobustFreeCADBridge:
                 current = cut
             current.Label = name
             doc.recompute()
-            return f"Decke mit {len(oeffnungen)} Öffnungen: {current.Label}"
+            return (
+                f"Decke mit {len(oeffnungen)} Öffnungen: {current.Label} | "
+                f"{self._gate_info(current)}"
+            )
         except Exception as e:
             return f"Fehler: {str(e)}"
 
