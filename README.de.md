@@ -14,7 +14,7 @@
 
 ---
 
-[English](README.md) • [Deutsch](README.de.md) • [Dokumentation](#-api--werkzeug-referenz) • [Fehler melden](https://github.com/your-repo/freecad-bim-agent/issues)
+[English](README.md) • [Deutsch](README.de.md) • [Dokumentation](#-api--werkzeug-referenz) • [Fehler melden](https://github.com/ascriba/freecad-bim-agent/issues)
 
 </div>
 
@@ -88,20 +88,42 @@ graph TD;
 ### 1. Voraussetzungen
 
 - **Python:** 3.10 oder höher
-- **FreeCAD:** Laufende Instanz mit aktiver **FreeCAD Bridge** (XML-RPC-Server auf Port 8000).
+- **FreeCAD:** 1.0 oder höher. Eine Instanz mit laufender **FreeCAD Bridge** (XML-RPC-Server auf Port 8000).
 - **MCP-Client:** Ein MCP-kompatibler Agent (getestet mit [OpenCode](https://opencode.ai/)).
+
+> **Snap-Installation:** Ein per Snap installiertes FreeCAD kann `/tmp` nicht
+> lesen. Klone in diesem Fall in dein Benutzerverzeichnis (`~/freecad-bim-agent`),
+> nicht nach `/tmp`.
 
 ### 2. Installation
 
-Repository klonen und Abhängigkeiten installieren:
-
 ```bash
-git clone https://github.com/your-username/freecad-bim-agent.git
+git clone https://github.com/ascriba/freecad-bim-agent.git
 cd freecad-bim-agent
-pip install mcp python-dotenv
+pip install -r requirements.txt
 ```
 
-### 3. Agenten-Konfiguration
+### 3. Bridge in FreeCAD starten
+
+FreeCAD öffnen, zur **Python-Konsole** wechseln (View → Panels → Python console)
+und ausführen:
+
+```python
+exec(open("/vollstaendiger/pfad/zu/freecad_bridge.py").read())
+start_bridge()
+```
+
+Die Antwort lautet `--- Bridge AKTIV ---`. Port 8000 muss frei sein.
+
+### 4. MCP-Server starten
+
+In einem zweiten Terminal:
+
+```bash
+python mcp_server.py
+```
+
+### 5. Agenten-Konfiguration
 
 Füge den Server zur MCP-Konfigurationsdatei deines Agenten hinzu (z. B. `opencode.json`):
 
@@ -118,6 +140,22 @@ Füge den Server zur MCP-Konfigurationsdatei deines Agenten hinzu (z. B. `openco
     }
   }
 }
+```
+
+### Tests ausführen
+
+```bash
+bash run_tests.sh
+```
+
+Die Suite startet FreeCAD headless (ohne GUI) und meldet `PASS`/`FAIL` pro
+Test sowie eine Zusammenfassung. Der Exit-Code ist nur dann `0`, wenn alle
+Tests bestehen.
+
+Falls FreeCAD nicht im `PATH` liegt, `FREECAD_CMD` setzen:
+
+```bash
+FREECAD_CMD=/usr/bin/freecadcmd bash run_tests.sh
 ```
 
 ---
@@ -269,6 +307,7 @@ Füge den Server zur MCP-Konfigurationsdatei deines Agenten hinzu (z. B. `openco
 
 ## 🛠️ Entwickler- & Architekturhinweise
 
+- **Testsuite ausführen:** `bash run_tests.sh` startet FreeCAD headless und führt alle 96 Tests aus. Die Tests laufen in FreeCADs eigenem Interpreter, weil sie das globale `App`-Objekt brauchen — ein normaler `pytest`-Aufruf funktioniert nicht.
 - **Fehlertoleranz:** Jeder XML-RPC-Aufruf ist in Exception-Handler eingebettet. Schlagen FreeCAD-Geometrieoperationen fehl, werden die Fehler in lesbaren Klartext umgewandelt und an das LLM zurückgemeldet. Dadurch bleibt der MCP-Server stabil und der KI-Agent kann Fehler selbstständig korrigieren.
 - **Multimodale visuelle Prüfung:** Das Werkzeug `capture_view` empfängt Bilddaten aus FreeCAD, konvertiert sie via `FastMCP.Image` und stellt sie dem Sprachmodell direkt als Bild zur visuellen Überprüfung bereit.
 - **Automatische Wiederholungen:** Integrierte Retry-Mechanismen (`_dispatch`) fangen vorübergehende Zeitüberschreitungen ab (2 Versuche, 45s Timeout).
