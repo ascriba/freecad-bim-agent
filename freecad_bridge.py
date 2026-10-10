@@ -21,6 +21,7 @@ AUDIT_LOG = []  # In-Memory Audit-Log für sicherheitskritische Aktionen
 request_queue = queue.Queue()
 _timer_obj = None
 
+
 def process_requests():
     """Arbeitet die Queue im Main Thread ab."""
     try:
@@ -28,17 +29,20 @@ def process_requests():
             func, args, kwargs, result_holder = request_queue.get_nowait()
             try:
                 res = func(*args, **kwargs)
-                result_holder['result'] = res
+                result_holder["result"] = res
             except Exception as e:
-                result_holder['error'] = str(e)
+                result_holder["error"] = str(e)
             finally:
-                result_holder['event'].set()
+                result_holder["event"].set()
                 request_queue.task_done()
     except queue.Empty:
         pass
     except Exception as e:
-        try: App.Console.PrintMessage(f"Fehler im Request Processor: {str(e)}\n")
-        except: pass
+        try:
+            App.Console.PrintMessage(f"Fehler im Request Processor: {str(e)}\n")
+        except:
+            pass
+
 
 class RobustFreeCADBridge:
     def _dispatch(self, method, params, retries=2):
@@ -46,10 +50,14 @@ class RobustFreeCADBridge:
             raise Exception(f"Methode {method} nicht gefunden.")
         func = getattr(self, method)
         for attempt in range(retries + 1):
-            result_holder = {'event': threading.Event(), 'result': None, 'error': None}
+            result_holder = {"event": threading.Event(), "result": None, "error": None}
             request_queue.put((func, params, {}, result_holder))
-            if result_holder['event'].wait(timeout=45.0):
-                return result_holder['error'] if result_holder['error'] else result_holder['result']
+            if result_holder["event"].wait(timeout=45.0):
+                return (
+                    result_holder["error"]
+                    if result_holder["error"]
+                    else result_holder["result"]
+                )
         return "Fehler: Timeout im Main Thread (nach 2 Versuchen)."
 
     def hot_reload(self):
@@ -66,24 +74,32 @@ class RobustFreeCADBridge:
         # Falls das LLM schon eine reine Zahl liefert, direkt als Float zurückgeben
         if isinstance(val, (int, float)):
             return float(val)
-            
+
         # Falls es ein String ist, deine bestehende Parsing-Logik anwenden
         val_str = str(val).lower().strip()
         if "mm" in val_str:
             return float(val_str.replace("mm", ""))
         if "m" in val_str:
             return float(val_str.replace("m", "")) * 1000.0
-            
+
         # Wenn kein Suffix da ist, nimm an es sind bereits mm (FreeCAD Standard)
         try:
             return float(val_str)
         except ValueError:
             return 0.0
-    
+
     def _get_obj(self, name_or_label):
-        if not App.ActiveDocument: return None
+        if not App.ActiveDocument:
+            return None
         obj = App.ActiveDocument.getObject(name_or_label)
-        return obj if obj else next((o for o in App.ActiveDocument.Objects if o.Label == name_or_label), None)
+        return (
+            obj
+            if obj
+            else next(
+                (o for o in App.ActiveDocument.Objects if o.Label == name_or_label),
+                None,
+            )
+        )
 
     def _sanitize_path(self, user_path):
         """Stellt sicher, dass der Pfad innerhalb des erlaubten Export-Verzeichnisses bleibt."""
@@ -92,7 +108,9 @@ class RobustFreeCADBridge:
         resolved = os.path.realpath(user_path)
         allowed = os.path.realpath(ALLOWED_EXPORT_DIR)
         if not resolved.startswith(allowed + os.sep) and resolved != allowed:
-            raise PermissionError(f"Zugriff verweigert: {resolved} liegt nicht im erlaubten Bereich ({allowed})")
+            raise PermissionError(
+                f"Zugriff verweigert: {resolved} liegt nicht im erlaubten Bereich ({allowed})"
+            )
         return resolved
 
     def _audit(self, action, detail):
@@ -104,66 +122,112 @@ class RobustFreeCADBridge:
         except:
             pass
 
+    def _gate_info(self, obj):
+        """Gate-Daten (BBox/Volume) für Tool-Antworten."""
+        try:
+            if hasattr(obj, "Shape") and obj.Shape and not obj.Shape.isNull():
+                bb = obj.Shape.BoundBox
+                return (
+                    f"BBox: X({bb.XMin:.1f}..{bb.XMax:.1f}) "
+                    f"Y({bb.YMin:.1f}..{bb.YMax:.1f}) "
+                    f"Z({bb.ZMin:.1f}..{bb.ZMax:.1f}), "
+                    f"Volume: {obj.Shape.Volume * 1e-9:.3f} m3"
+                )
+        except Exception:
+            pass
+        return ""
+
     def to_vector(self, p):
         try:
-            if hasattr(p, "x"): 
+            if hasattr(p, "x"):
                 return p
-                
+
             # 1. Wenn es eine Liste oder ein Tuple vom LLM ist (z.B. [0.0, 5.0, 0.0])
             if isinstance(p, (list, tuple)):
                 # WICHTIG: Wenn der Wert ein roher Float/Int ist, behandeln wir ihn als Meter (mal 1000)
                 # Wenn es ein String ist (z.B. "500mm"), regelt das _parse_unit.
-                x = p[0] * 1000.0 if isinstance(p[0], (int, float)) else self._parse_unit(p[0])
-                y = p[1] * 1000.0 if isinstance(p[1], (int, float)) else self._parse_unit(p[1])
-                z = p[2] * 1000.0 if isinstance(p[2], (int, float)) else self._parse_unit(p[2]) if len(p) > 2 else 0.0
+                x = (
+                    p[0] * 1000.0
+                    if isinstance(p[0], (int, float))
+                    else self._parse_unit(p[0])
+                )
+                y = (
+                    p[1] * 1000.0
+                    if isinstance(p[1], (int, float))
+                    else self._parse_unit(p[1])
+                )
+                z = (
+                    p[2] * 1000.0
+                    if isinstance(p[2], (int, float))
+                    else self._parse_unit(p[2])
+                    if len(p) > 2
+                    else 0.0
+                )
                 return App.Vector(x, y, z)
-                
+
             if isinstance(p, dict):
                 return App.Vector(
-                    self._parse_unit(p.get("x", 0)), 
-                    self._parse_unit(p.get("y", 0)), 
-                    self._parse_unit(p.get("z", 0))
+                    self._parse_unit(p.get("x", 0)),
+                    self._parse_unit(p.get("y", 0)),
+                    self._parse_unit(p.get("z", 0)),
                 )
-                
+
             # 2. Wenn es ein String ist
             if isinstance(p, str):
                 parts = p.strip("[]() ").split(",")
                 return App.Vector(
-                    self._parse_unit(parts[0]), 
-                    self._parse_unit(parts[1]), 
-                    self._parse_unit(parts[2]) if len(parts) > 2 else 0.0
+                    self._parse_unit(parts[0]),
+                    self._parse_unit(parts[1]),
+                    self._parse_unit(parts[2]) if len(parts) > 2 else 0.0,
                 )
         except Exception as e:
-            raise ValueError(f"Vektor-Fehler bei der Konvertierung von {p}. Details: {str(e)}")
-            
+            raise ValueError(
+                f"Vektor-Fehler bei der Konvertierung von {p}. Details: {str(e)}"
+            )
+
         raise ValueError(f"Vektor-Fehler: Ungültiges Format {p}")
 
     # --- Diagnose & Ansicht ---
-    def capture_view(self, filename="freecad_view.png", view_type="iso", camera_position=None, target=None):
+    def capture_view(
+        self,
+        filename="freecad_view.png",
+        view_type="iso",
+        camera_position=None,
+        target=None,
+    ):
         try:
             import FreeCADGui
-            if not App.ActiveDocument: return "Fehler: Kein Dokument."
+
+            if not App.ActiveDocument:
+                return "Fehler: Kein Dokument."
             view = FreeCADGui.ActiveDocument.ActiveView
-            if not view: return "Fehler: Keine Ansicht."
-            
+            if not view:
+                return "Fehler: Keine Ansicht."
+
             safe_path = self._sanitize_path(filename)
-            if view_type == "top": view.viewTop()
-            elif view_type == "front": view.viewFront()
-            elif view_type == "right": view.viewRight()
-            else: view.viewIsometric()
+            if view_type == "top":
+                view.viewTop()
+            elif view_type == "front":
+                view.viewFront()
+            elif view_type == "right":
+                view.viewRight()
+            else:
+                view.viewIsometric()
             view.saveImage(safe_path, 1280, 720, "White")
-            
+
             if os.path.exists(safe_path):
                 with open(safe_path, "rb") as f:
-                    return base64.b64encode(f.read()).decode('utf-8')
+                    return base64.b64encode(f.read()).decode("utf-8")
             return "Fehler: Bild wurde nicht gespeichert."
         except PermissionError as e:
             return f"Fehler: {str(e)}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def liste_objekte(self):
         try:
-            if not App.ActiveDocument: return "Kein Dokument."
+            if not App.ActiveDocument:
+                return "Kein Dokument."
             res = ["--- Objektliste (Label → Name) ---"]
             for o in App.ActiveDocument.Objects:
                 line = f"  {o.Label} → {o.Name} [{o.TypeId}]"
@@ -177,27 +241,35 @@ class RobustFreeCADBridge:
                 res.append(line)
             res.append(f"--- {len(App.ActiveDocument.Objects)} Objekte ---")
             return "\n".join(res)
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def delete_object(self, name):
         try:
             obj = self._get_obj(name)
-            if not obj: return "Nicht gefunden."
+            if not obj:
+                return "Nicht gefunden."
             self._audit("DELETE", f"Objekt '{obj.Label}' ({obj.Name}, {obj.TypeId})")
             App.ActiveDocument.removeObject(obj.Name)
             App.ActiveDocument.recompute()
             return f"Gelöscht: {name}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     # --- Geometrie ---
     def erstelle_wuerfel(self, l=10, w=10, h=10):
         try:
             doc = App.ActiveDocument or App.newDocument("MCP")
             box = doc.addObject("Part::Box", "Wuerfel")
-            box.Length, box.Width, box.Height = self._parse_unit(l), self._parse_unit(w), self._parse_unit(h)
+            box.Length, box.Width, box.Height = (
+                self._parse_unit(l),
+                self._parse_unit(w),
+                self._parse_unit(h),
+            )
             doc.recompute()
             return f"Erfolg: {box.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def erstelle_kugel(self, radius=5.0):
         try:
@@ -206,7 +278,8 @@ class RobustFreeCADBridge:
             s.Radius = self._parse_unit(radius)
             doc.recompute()
             return f"Erfolg: {s.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def erstelle_zylinder(self, radius=5.0, height=10.0):
         try:
@@ -216,143 +289,247 @@ class RobustFreeCADBridge:
             cyl.Height = self._parse_unit(height)
             doc.recompute()
             return f"Erfolg: {cyl.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def setze_position(self, name, x, y, z):
         try:
             obj = self._get_obj(name)
-            if not obj: return "Nicht gefunden."
+            if not obj:
+                return "Nicht gefunden."
             # MCP-Tool übergibt Meter (float) → in mm konvertieren
             x_mm = x * 1000.0 if isinstance(x, (int, float)) else self._parse_unit(x)
             y_mm = y * 1000.0 if isinstance(y, (int, float)) else self._parse_unit(y)
             z_mm = z * 1000.0 if isinstance(z, (int, float)) else self._parse_unit(z)
             obj.Placement.Base = App.Vector(x_mm, y_mm, z_mm)
             App.ActiveDocument.recompute()
-            return "Position gesetzt."
-        except Exception as e: return f"Fehler: {str(e)}"
+            return f"Position gesetzt. | {self._gate_info(obj)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def verschiebe_objekt(self, name, dx=0.0, dy=0.0, dz=0.0):
+        """Verschiebt ein Objekt RELATIV (Offset). Zahlen = Meter."""
+        try:
+            obj = self._get_obj(name)
+            if not obj:
+                return "Nicht gefunden."
+
+            def _mm(v):
+                return (
+                    v * 1000.0 if isinstance(v, (int, float)) else self._parse_unit(v)
+                )
+
+            obj.Placement.Base = obj.Placement.Base + App.Vector(
+                _mm(dx), _mm(dy), _mm(dz)
+            )
+            App.ActiveDocument.recompute()
+            return f"Verschoben: {obj.Label} | {self._gate_info(obj)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def drehe_objekt(self, name, axis, angle):
         try:
             obj = self._get_obj(name)
-            if not obj: return "Nicht gefunden."
-            axis_v = App.Vector(1,0,0) if axis.upper()=='X' else App.Vector(0,1,0) if axis.upper()=='Y' else App.Vector(0,0,1)
+            if not obj:
+                return "Nicht gefunden."
+            axis_v = (
+                App.Vector(1, 0, 0)
+                if axis.upper() == "X"
+                else App.Vector(0, 1, 0)
+                if axis.upper() == "Y"
+                else App.Vector(0, 0, 1)
+            )
             obj.Placement.Rotation = App.Rotation(axis_v, float(angle))
             App.ActiveDocument.recompute()
             return f"Gedreht: {name}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def bool_union(self, obj_a, obj_b):
         try:
             doc = App.ActiveDocument
             a, b = self._get_obj(obj_a), self._get_obj(obj_b)
-            if not a or not b: return "Objekt nicht gefunden."
+            if not a or not b:
+                return "Objekt nicht gefunden."
             fusion = doc.addObject("Part::MultiFuse", "Fusion")
             fusion.Shapes = [a, b]
-            if hasattr(a, "ViewObject"): a.ViewObject.Visibility = False
-            if hasattr(b, "ViewObject"): b.ViewObject.Visibility = False
+            if hasattr(a, "ViewObject") and a.ViewObject:
+                a.ViewObject.Visibility = False
+            if hasattr(b, "ViewObject") and b.ViewObject:
+                b.ViewObject.Visibility = False
             doc.recompute()
             return f"Fusion: {fusion.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def bool_cut(self, base_obj, tool_obj):
         try:
             doc = App.ActiveDocument
             b, t = self._get_obj(base_obj), self._get_obj(tool_obj)
-            if not b or not t: return "Objekt nicht gefunden."
+            if not b or not t:
+                return "Objekt nicht gefunden."
             cut = doc.addObject("Part::Cut", "Schnitt")
             cut.Base, cut.Tool = b, t
-            if hasattr(b, "ViewObject"): b.ViewObject.Visibility = False
-            if hasattr(t, "ViewObject"): t.ViewObject.Visibility = False
+            if hasattr(b, "ViewObject") and b.ViewObject:
+                b.ViewObject.Visibility = False
+            if hasattr(t, "ViewObject") and t.ViewObject:
+                t.ViewObject.Visibility = False
             doc.recompute()
             return f"Schnitt: {cut.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     # --- BIM ---
     def erstelle_site(self, name="Grundstueck"):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            site = Arch.makeSite(); site.Label = name
+            site = Arch.makeSite()
+            site.Label = name
             doc.recompute()
             return f"Site: {site.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def erstelle_gebaeude(self, name="Gebaeude"):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            b = Arch.makeBuilding(); b.Label = name
+            b = Arch.makeBuilding()
+            b.Label = name
             doc.recompute()
             return f"Building: {b.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def erstelle_stockwerk(self, name="Stockwerk"):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            f = Arch.makeFloor(); f.Label = name
+            f = Arch.makeFloor()
+            f.Label = name
             doc.recompute()
             return f"Floor: {f.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_bodenplatte(self, length="10m", width="8m", height="200mm", name="Bodenplatte",
-                          placement_x="0mm", placement_y="0mm", placement_z="0mm"):
+    def erstelle_bodenplatte(
+        self,
+        length="10m",
+        width="8m",
+        height="200mm",
+        name="Bodenplatte",
+        placement_x="0mm",
+        placement_y="0mm",
+        placement_z="0mm",
+        direction="-z",
+    ):
         try:
             import Arch, Draft
+
+            if direction not in ("-z", "+z"):
+                return (
+                    f"Fehler: Unbekannte Richtung '{direction}'. Erlaubt: "
+                    "'-z' (placement_z=Oberkante) oder '+z' (placement_z=Unterkante)."
+                )
             doc = App.ActiveDocument or App.newDocument("BIM")
-            rect = Draft.makeRectangle(self._parse_unit(length), self._parse_unit(width))
-            if hasattr(rect, "ViewObject"): rect.ViewObject.Visibility = False
+            rect = Draft.makeRectangle(
+                self._parse_unit(length), self._parse_unit(width)
+            )
+            if hasattr(rect, "ViewObject") and rect.ViewObject:
+                rect.ViewObject.Visibility = False
             slab = Arch.makeStructure(rect)
             slab.IfcType = "Slab"
             h_val = self._parse_unit(height)
             slab.Height = h_val
             slab.touch()
-            slab.Normal = (0, 0, -1)
+            slab.Normal = (0, 0, -1) if direction == "-z" else (0, 0, 1)
             slab.Label = name
-            slab.Placement.Base = App.Vector(self._parse_unit(placement_x), self._parse_unit(placement_y), self._parse_unit(placement_z))
+            slab.Placement.Base = App.Vector(
+                self._parse_unit(placement_x),
+                self._parse_unit(placement_y),
+                self._parse_unit(placement_z),
+            )
             doc.recompute()
             # Sicherstellen, dass Height korrekt übernommen wurde
             if float(slab.Height) != h_val:
                 slab.Height = str(h_val)
                 slab.touch()
                 doc.recompute()
-            return f"Slab: {slab.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+            return f"Slab: {slab.Label} | {self._gate_info(slab)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_wand_aus_punkten(self, p1, p2, width="300mm", height="2500mm", name="Wand"):
+    def erstelle_wand_aus_punkten(
+        self,
+        p1,
+        p2,
+        width="300mm",
+        height="2500mm",
+        name="Wand",
+        align="Center",
+        align_to=None,
+    ):
+        base_line = None
+        wall = None
         try:
             import Arch
             import Draft
-            
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            
+
             # 1. Deine vorhandene Vektor-Konvertierung nutzen
             v1 = self.to_vector(p1)
             v2 = self.to_vector(p2)
-            
+
             # 2. Die echte Draft-Linie im Hintergrund erstellen
             # (Nutzt die korrekte FreeCAD-Syntax Draft.make_line)
             base_line = Draft.make_line(v1, v2)
-            
+
             # Basislinie unsichtbar schalten, damit nur die Wand zu sehen ist
-            if hasattr(base_line, "ViewObject"): 
+            if hasattr(base_line, "ViewObject") and base_line.ViewObject:
                 base_line.ViewObject.Visibility = False
-            
+
             # 3. Wand aus der Linie erzeugen
             wall = Arch.makeWall(base_line)
-            
+
             # 4. Dimensionen direkt der Wand zuweisen
             wall.Width = self._parse_unit(width)
             wall.Height = self._parse_unit(height)
             wall.Label = name
             wall.IfcType = "Wall"
-            
+
+            # 5. Ausrichtung direkt beim Erstellen (align_to überschreibt align)
+            doc.recompute()  # Baseline-Shape braucht ein recompute für Vertexes
+            align = align if align else "Center"
+            if align_to is not None or align != "Center":
+                erg = self.ausrichten_wand(name, align, align_to)
+                if isinstance(erg, str) and erg.startswith("Fehler"):
+                    raise ValueError(erg)
+
             doc.recompute()
-            return f"Erfolgreich: Wand '{wall.Label}' wurde von {p1} nach {p2} erstellt."
-            
+            return (
+                f"Erfolgreich: Wand '{wall.Label}' wurde von {p1} nach {p2} erstellt. "
+                f"Align: {wall.Align} | {self._gate_info(wall)}"
+            )
+
         except Exception as e:
+            # Halbfertige Objekte bei Fehlern wieder entfernen
+            try:
+                if wall is not None:
+                    App.ActiveDocument.removeObject(wall.Name)
+                if base_line is not None:
+                    App.ActiveDocument.removeObject(base_line.Name)
+            except Exception:
+                pass
+            # ValueError = Validierungsfehler aus ausrichten_wand ("Fehler: ...")
+            if isinstance(e, ValueError) and str(e).startswith("Fehler:"):
+                return str(e)
             return f"Fehler in Bridge: {str(e)}"
-    
+
     def ausrichten_wand(self, wand_bezeichnung, align="Left", align_to=None):
         try:
             doc = App.ActiveDocument
@@ -402,10 +579,11 @@ class RobustFreeCADBridge:
 
         except Exception as e:
             return f"Fehler in Bridge im tool Wand_ausrichten: {str(e)}"
-        
+
     def vereinigen_Wand(self, wand_liste):
         try:
             import Arch
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -415,23 +593,30 @@ class RobustFreeCADBridge:
             for obj in doc.Objects:
                 if obj.Label in wand_liste:
                     walls.append(obj)
-                                
+
             if len(walls) <= 1:
                 return f"Fehler: Wand '{wand_liste}' nicht gefunden. {walls}"
             elif len(walls) == 2:
                 Arch.addComponents(walls[0], walls[-1])
             else:
                 Arch.addComponents(walls[:-1], walls[-1])
-                  
+
             doc.recompute()
             return f"Erfolgreich: Wand '{wand_liste}' vereinigt."
-        
+
         except Exception as e:
             return f"Fehler in Bridge in tool vereinigen_Wand: {str(e)}"
-        
 
-
-    def fuege_fenster_ein(self, wand_bezeichnung, distance_from_start="1.5m", width="900mm", height="2000mm", sill_height="0mm", windowtype="Simple door", name="Fenster"):
+    def fuege_fenster_ein(
+        self,
+        wand_bezeichnung,
+        distance_from_start="1.5m",
+        width="900mm",
+        height="2000mm",
+        sill_height="0mm",
+        windowtype="Simple door",
+        name="Fenster",
+    ):
         try:
             import Arch
 
@@ -468,23 +653,40 @@ class RobustFreeCADBridge:
             wand_normale = wand_vektor.cross(vektor_oben).normalize()
 
             m = App.Matrix()
-            m.A11 = wand_vektor.x;   m.A21 = wand_vektor.y;   m.A31 = wand_vektor.z
-            m.A12 = vektor_oben.x;   m.A22 = vektor_oben.y;   m.A32 = vektor_oben.z
-            m.A13 = wand_normale.x;  m.A23 = wand_normale.y;  m.A33 = wand_normale.z
+            m.A11 = wand_vektor.x
+            m.A21 = wand_vektor.y
+            m.A31 = wand_vektor.z
+            m.A12 = vektor_oben.x
+            m.A22 = vektor_oben.y
+            m.A32 = vektor_oben.z
+            m.A13 = wand_normale.x
+            m.A23 = wand_normale.y
+            m.A33 = wand_normale.z
             rot = App.Rotation(m)
 
             doors = ["Simple door", "Glass door"]
             clean_preset = "Fixed" if "fixed" in windowtype.lower() else "Simple door"
             window = Arch.makeWindowPreset(
                 clean_preset,
-                width=w_val, height=h_val,
-                h1=50.0, h2=50.0, h3=50.0, w1=100.0, w2=50.0, o1=0.0, o2=50.0
+                width=w_val,
+                height=h_val,
+                h1=50.0,
+                h2=50.0,
+                h3=50.0,
+                w1=100.0,
+                w2=50.0,
+                o1=0.0,
+                o2=50.0,
             )
 
             if windowtype in doors:
-                exakte_position = wand_start + (wand_vektor * dist) + (vektor_oben * (0))
+                exakte_position = (
+                    wand_start + (wand_vektor * dist) + (vektor_oben * (0))
+                )
             else:
-                exakte_position = wand_start + (wand_vektor * dist) + (vektor_oben * s_val)
+                exakte_position = (
+                    wand_start + (wand_vektor * dist) + (vektor_oben * s_val)
+                )
             window.Placement = App.Placement(exakte_position, rot)
 
             window.Hosts = [wall]
@@ -496,32 +698,63 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler in Bridge beim Platzieren: {str(e)}"
 
-    def erstelle_struktur(self, length="100mm", width="20mm", height="2000mm", name="Balken",
-                         position_x=None, position_y=None, position_z=None):
+    def erstelle_struktur(
+        self,
+        length="100mm",
+        width="20mm",
+        height="2000mm",
+        name="Balken",
+        position_x=None,
+        position_y=None,
+        position_z=None,
+    ):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             base = doc.addObject("Part::Box", "StructBase")
-            base.Length, base.Width, base.Height = self._parse_unit(length), self._parse_unit(width), self._parse_unit(height)
-            if hasattr(base, "ViewObject"): base.ViewObject.Visibility = False
+            base.Length, base.Width, base.Height = (
+                self._parse_unit(length),
+                self._parse_unit(width),
+                self._parse_unit(height),
+            )
+            if hasattr(base, "ViewObject") and base.ViewObject:
+                base.ViewObject.Visibility = False
             struct = Arch.makeStructure(base)
             struct.Label = name
             if position_x is not None and position_y is not None:
-                x = position_x * 1000.0 if isinstance(position_x, (int, float)) else self._parse_unit(position_x)
-                y = position_y * 1000.0 if isinstance(position_y, (int, float)) else self._parse_unit(position_y)
-                z = (position_z or 0) * 1000.0 if isinstance(position_z if position_z else 0, (int, float)) else self._parse_unit(position_z or "0mm")
+                x = (
+                    position_x * 1000.0
+                    if isinstance(position_x, (int, float))
+                    else self._parse_unit(position_x)
+                )
+                y = (
+                    position_y * 1000.0
+                    if isinstance(position_y, (int, float))
+                    else self._parse_unit(position_y)
+                )
+                z = (
+                    (position_z or 0) * 1000.0
+                    if isinstance(position_z if position_z else 0, (int, float))
+                    else self._parse_unit(position_z or "0mm")
+                )
                 struct.Placement.Base = App.Vector(x, y, z)
             doc.recompute()
             return f"Struktur: {struct.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def _finde_profil_csv(self):
         kandidaten = []
 
         # 1. FreeCAD-Systemprofile (autoritative Quelle)
         resource_dir = App.getResourceDir()
-        kandidaten.append(os.path.join(resource_dir, "Mod", "BIM", "Presets", "profiles.csv"))
-        kandidaten.append(os.path.join(resource_dir, "Mod", "Arch", "Presets", "profiles.csv"))
+        kandidaten.append(
+            os.path.join(resource_dir, "Mod", "BIM", "Presets", "profiles.csv")
+        )
+        kandidaten.append(
+            os.path.join(resource_dir, "Mod", "Arch", "Presets", "profiles.csv")
+        )
 
         # 2. User-AppData (FreeCAD 1.0+)
         kandidaten.append(os.path.join(App.getUserAppDataDir(), "BIM", "profiles.csv"))
@@ -531,7 +764,9 @@ class RobustFreeCADBridge:
 
         # 4. Gleiches Verzeichnis wie freecad_bridge.py
         try:
-            kandidaten.append(os.path.join(os.path.dirname(__file__), "profiles_copy.csv"))
+            kandidaten.append(
+                os.path.join(os.path.dirname(__file__), "profiles_copy.csv")
+            )
         except NameError:
             pass
 
@@ -539,7 +774,9 @@ class RobustFreeCADBridge:
         try:
             doc_path = App.ActiveDocument.FileName
             if doc_path:
-                kandidaten.append(os.path.join(os.path.dirname(doc_path), "profiles_copy.csv"))
+                kandidaten.append(
+                    os.path.join(os.path.dirname(doc_path), "profiles_copy.csv")
+                )
         except Exception:
             pass
 
@@ -568,36 +805,69 @@ class RobustFreeCADBridge:
                         continue
                     pclass = row[2].strip()
                     params = [float(p) for p in row[3:]]
-                    return {"category": cat, "name": name, "profile_class": pclass, "params": params}
+                    return {
+                        "category": cat,
+                        "name": name,
+                        "profile_class": pclass,
+                        "params": params,
+                    }
         msg = f"Profil '{profile_name}' nicht gefunden"
         if category:
             msg += f" in Kategorie '{category}'"
         raise ValueError(msg)
 
-    def erstelle_profil_struktur(self, profile_name="IPE300", height="3000mm", name="Profilstruktur",
-                                  position_x=None, position_y=None, position_z=None, category=None):
+    def erstelle_profil_struktur(
+        self,
+        profile_name="IPE300",
+        height="3000mm",
+        name="Profilstruktur",
+        position_x=None,
+        position_y=None,
+        position_z=None,
+        category=None,
+    ):
         try:
             import Arch
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             profil_data = self._finde_profil(profile_name, category)
-            profil_liste = [0, profil_data["category"], profil_data["name"],
-                            profil_data["profile_class"]] + profil_data["params"]
+            profil_liste = [
+                0,
+                profil_data["category"],
+                profil_data["name"],
+                profil_data["profile_class"],
+            ] + profil_data["params"]
             p = Arch.makeProfile(profil_liste)
             h = self._parse_unit(height)
             s = Arch.makeStructure(p, height=h)
             s.Profile = profil_data["name"]
             s.Label = name
             if position_x is not None and position_y is not None:
-                x = position_x * 1000.0 if isinstance(position_x, (int, float)) else self._parse_unit(str(position_x))
-                y = position_y * 1000.0 if isinstance(position_y, (int, float)) else self._parse_unit(str(position_y))
-                z = (position_z or 0) * 1000.0 if isinstance(position_z if position_z else 0, (int, float)) else self._parse_unit(str(position_z or "0mm"))
+                x = (
+                    position_x * 1000.0
+                    if isinstance(position_x, (int, float))
+                    else self._parse_unit(str(position_x))
+                )
+                y = (
+                    position_y * 1000.0
+                    if isinstance(position_y, (int, float))
+                    else self._parse_unit(str(position_y))
+                )
+                z = (
+                    (position_z or 0) * 1000.0
+                    if isinstance(position_z if position_z else 0, (int, float))
+                    else self._parse_unit(str(position_z or "0mm"))
+                )
                 s.Placement.Base = App.Vector(x, y, z)
             try:
                 import WorkingPlane
+
                 wp = WorkingPlane.get_working_plane()
                 if wp:
-                    s.Placement.Rotation = s.Placement.Rotation.multiply(wp.get_placement().Rotation)
+                    s.Placement.Rotation = s.Placement.Rotation.multiply(
+                        wp.get_placement().Rotation
+                    )
             except Exception:
                 pass
             Draft.autogroup(s)
@@ -609,28 +879,37 @@ class RobustFreeCADBridge:
     def fuege_zu_wand_hinzu(self, wand_n, komp_n):
         try:
             import Arch
+
             w, k = self._get_obj(wand_n), self._get_obj(komp_n)
-            if not w or not k: return "Objekt nicht gefunden."
+            if not w or not k:
+                return "Objekt nicht gefunden."
             Arch.addComponents(k, w)
             App.ActiveDocument.recompute()
             return "Komponente in Wand eingesetzt."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def fuege_zu_container_hinzu(self, obj_n, cont_n):
         try:
             o, c = self._get_obj(obj_n), self._get_obj(cont_n)
-            if not o or not c: return "Objekt nicht gefunden."
-            if hasattr(c, "addObject"): c.addObject(o)
+            if not o or not c:
+                return "Objekt nicht gefunden."
+            if hasattr(c, "addObject"):
+                c.addObject(o)
             elif hasattr(c, "Group"):
-                g = list(c.Group); g.append(o); c.Group = g
+                g = list(c.Group)
+                g.append(o)
+                c.Group = g
             App.ActiveDocument.recompute()
             return f"{o.Label} -> {c.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def fuege_mehrere_zu_container_hinzu(self, objekte_liste, container_name):
         try:
             cont = self._get_obj(container_name)
-            if not cont: return f"Container '{container_name}' nicht gefunden."
+            if not cont:
+                return f"Container '{container_name}' nicht gefunden."
             added = []
             errors = []
             for obj_name in objekte_liste:
@@ -641,104 +920,211 @@ class RobustFreeCADBridge:
                 if hasattr(cont, "addObject"):
                     cont.addObject(o)
                 elif hasattr(cont, "Group"):
-                    g = list(cont.Group); g.append(o); cont.Group = g
+                    g = list(cont.Group)
+                    g.append(o)
+                    cont.Group = g
                 added.append(o.Label)
             App.ActiveDocument.recompute()
             parts = []
-            if added: parts.append(f"Hinzugefügt: {', '.join(added)}")
-            if errors: parts.append(f"Fehler: {', '.join(errors)}")
+            if added:
+                parts.append(f"Hinzugefügt: {', '.join(added)}")
+            if errors:
+                parts.append(f"Fehler: {', '.join(errors)}")
             return "; ".join(parts) if parts else "Nichts hinzugefügt."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     # --- BIM Erweiterung Phase 1 ---
-    def erstelle_dach(self, punkte, ueberstand="500mm", dicke="100mm", winkel=30.0, name="Dach"):
+    def erstelle_dach(
+        self, punkte, ueberstand="500mm", dicke="100mm", winkel=30.0, name="Dach"
+    ):
+        draht = None
+        dach = None
         try:
             import Arch, Draft
+            import Part
+            import math
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             punkte_vektoren = [self.to_vector(p) for p in punkte]
+            if len(punkte_vektoren) < 3:
+                raise ValueError("Dachumriss braucht mindestens 3 Punkte.")
             draht = Draft.makeWire(punkte_vektoren, closed=True)
-            if hasattr(draht, "ViewObject"):
+            if hasattr(draht, "ViewObject") and draht.ViewObject:
                 draht.ViewObject.Visibility = False
             doc.recompute()
             dach = Arch.makeRoof(draht)
             dach.Label = name
-            if hasattr(dach, "Thickness"):
-                dach.Thickness = [self._parse_unit(dicke)]
-            if hasattr(dach, "Overhang"):
-                dach.Overhang = [self._parse_unit(ueberstand)]
-            if hasattr(dach, "Angles"):
-                anzahl_flaechen = len(dach.Angles)
-                dach.Angles = [winkel] * anzahl_flaechen if anzahl_flaechen > 0 else [winkel]
+
+            kanten = Part.__sortEdges__(draht.Shape.Wires[0].Edges)
+            n = len(kanten)
+
+            # Winkel je sortierter Kante:
+            # float -> alle Flächen; Liste -> Punkt-Reihenfolge auf Kanten mappen
+            if isinstance(winkel, (list, tuple)):
+                if len(winkel) != len(punkte_vektoren):
+                    raise ValueError(
+                        f"Winkelliste hat {len(winkel)} Einträge, der Umriss hat "
+                        f"{len(punkte_vektoren)} Kanten."
+                    )
+                winkel_seg = [float(w) for w in winkel]
+                winkel_kanten = []
+                tol = 1e-6
+                for e in kanten:
+                    p1, p2 = e.Vertexes[0].Point, e.Vertexes[-1].Point
+                    seg_idx = None
+                    for i in range(len(punkte_vektoren)):
+                        a = punkte_vektoren[i]
+                        b = punkte_vektoren[(i + 1) % len(punkte_vektoren)]
+                        if (
+                            p1.distanceToPoint(a) < tol and p2.distanceToPoint(b) < tol
+                        ) or (
+                            p1.distanceToPoint(b) < tol and p2.distanceToPoint(a) < tol
+                        ):
+                            seg_idx = i
+                            break
+                    if seg_idx is None:
+                        raise ValueError(
+                            "Kanten konnten dem Umriss nicht zugeordnet werden."
+                        )
+                    winkel_kanten.append(winkel_seg[seg_idx])
+            else:
+                winkel_kanten = [float(winkel)] * n
+
+            for w in winkel_kanten:
+                if w <= 0.0 or w > 90.0:
+                    raise ValueError(
+                        "Winkel muss zwischen 0 und 90 Grad liegen "
+                        "(90 = senkrechte Giebelflaeche)."
+                    )
+
+            # Runs (horizontale Projektion) und IdRel je Kante:
+            # Arch Roof berechnet Firsthoehe = Runs[i] * tan(Angles[i]).
+            # Ohne Runs bleibt die Geometrie beim Default haengen (Bug 1.1).
+            runs = [0.0] * n
+            idrel = [-1] * n
+            for i in range(n):
+                a_i = winkel_kanten[i]
+                if a_i == 90.0:
+                    # Senkrechte Giebelflaeche: Hoehe von angrenzender
+                    # geneigter Flaeche erben (IdRel)
+                    nachbarn = [(i - 1) % n, (i + 1) % n]
+                    rel = next(
+                        (j for j in nachbarn if 0.0 < winkel_kanten[j] < 90.0),
+                        None,
+                    )
+                    if rel is None:
+                        raise ValueError(
+                            "Senkrechte Giebelflaeche (90 Grad) ohne angrenzende "
+                            "geneigte Flaeche nicht darstellbar. Der Giebelkante "
+                            "muss mindestens eine Nachbarkante mit 0 < Winkel < 90 "
+                            "zugeordnet sein."
+                        )
+                    idrel[i] = rel
+                else:
+                    vec_i = (
+                        kanten[i].Vertexes[-1].Point.sub(kanten[i].Vertexes[0].Point)
+                    )
+                    best = None
+                    for j in range(n):
+                        if j == i:
+                            continue
+                        vec_j = (
+                            kanten[j]
+                            .Vertexes[-1]
+                            .Point.sub(kanten[j].Vertexes[0].Point)
+                        )
+                        if abs(vec_i.getAngle(vec_j) - math.pi) < 1e-6:
+                            dis = (
+                                kanten[i]
+                                .Vertexes[0]
+                                .Point.distanceToLine(
+                                    kanten[j].Vertexes[0].Point, vec_j
+                                )
+                            )
+                            if best is None or dis < best:
+                                best = dis
+                    # Auto-Run: halbe Distanz zur naechsten parallelen Gegenseite
+                    runs[i] = (best / 2.0) if best else 500.0
+
+            dach.Angles = winkel_kanten
+            dach.Runs = runs
+            dach.IdRel = idrel
+            dach.Thickness = [self._parse_unit(dicke)] * n
+            dach.Overhang = [self._parse_unit(ueberstand)] * n
             doc.recompute()
-            return f"Dach: {dach.Label}"
+            return f"Dach: {dach.Label} | {self._gate_info(dach)}"
         except Exception as e:
+            # Halbfertige Objekte bei Fehlern wieder entfernen
+            try:
+                if dach is not None:
+                    App.ActiveDocument.removeObject(dach.Name)
+                if draht is not None:
+                    App.ActiveDocument.removeObject(draht.Name)
+            except Exception:
+                pass
             return f"Fehler: {str(e)}"
 
-    def erstelle_treppe(self, hoehe="2500mm", breite="1200mm", podest=False, name="Treppe"):
+    def erstelle_treppe(
+        self, hoehe="2500mm", breite="1200mm", podest=False, name="Treppe"
+    ):
         try:
             import Arch
-            import Draft
-            doc = App.ActiveDocument or App.newDocument("BIM")
 
+            doc = App.ActiveDocument or App.newDocument("BIM")
             height_mm = self._parse_unit(hoehe)
             width_mm = self._parse_unit(breite)
 
-            # Stufenberechnung mit Formel 2h + b = 630mm
+            # Stufenberechnung mit Formel 2h + b = 630mm (Idealsteigung 175mm)
             step_height_ideal = 175.0
-            steps_count = max(1, round(height_mm / step_height_ideal))
-            step_height = height_mm / steps_count
-            tread_depth = max(200.0, 630.0 - 2.0 * step_height)
-
-            if podest and steps_count > 2:
-                first_half = steps_count // 2
-                second_half = steps_count - first_half
-                gap = width_mm * 0.5
-                y_offset = int(width_mm * 2 + gap)
-                landing_depth = int(width_mm)
-
-                first_flight_end = tread_depth * first_half
-                second_flight_start = max(0, first_flight_end - tread_depth * second_half)
-
-                seg1 = Draft.make_wire([App.Vector(0, 0, 0), App.Vector(first_flight_end, 0, 0)], closed=False)
-                seg1.Label = f"{name}_seg1"
-
-                l1 = App.Vector(first_flight_end, 0, 0)
-                l2 = App.Vector(first_flight_end + landing_depth, 0, 0)
-                l3 = App.Vector(first_flight_end + landing_depth, -y_offset, 0)
-                l4 = App.Vector(first_flight_end, -y_offset, 0)
-                landing = Draft.make_wire([l1, l2, l3, l4], closed=False)
-                landing.Label = f"{name}_podest"
-
-                seg2 = Draft.make_wire([App.Vector(first_flight_end, -y_offset, 0), App.Vector(second_flight_start, -y_offset, 0)], closed=False)
-                seg2.Label = f"{name}_seg2"
-
-                baseobjs = [seg1, landing, seg2]
-                total_length = first_flight_end + landing_depth + (first_flight_end - second_flight_start)
-            else:
-                total_length = tread_depth * steps_count
-                baseline = Draft.make_wire([App.Vector(0, 0, 0), App.Vector(total_length, 0, 0)], closed=False)
-                baseline.Label = f"{name}_baseline"
-                if hasattr(baseline, "ViewObject"):
-                    baseline.ViewObject.Visibility = False
-                baseobjs = baseline
-
-            treppe = Arch.makeStairs(baseobj=baseobjs, steps=steps_count)
-            treppe.Label = name
-
+            steps_count = max(2, round(height_mm / step_height_ideal))
+            # Neue Arch-Stairs-API: ohne Baseobj entsteht eine gerade Treppe;
+            # Podest/U-Form via Landings/Flight-Properties (FreeCAD >= 1.0)
+            treppe = Arch.makeStairs(
+                width=width_mm, height=height_mm, steps=steps_count, name=name
+            )
+            if podest:
+                if hasattr(treppe, "Flight") and hasattr(treppe, "Landings"):
+                    treppe.Landings = "At center"
+                    treppe.Flight = "HalfTurnLeft"
+                else:
+                    return (
+                        "Fehler: Podest-Treppen erfordern FreeCAD >= 1.0 "
+                        "(Arch Stairs mit Flight/Landings-Properties). "
+                        "Bitte FreeCAD aktualisieren."
+                    )
             doc.recompute()
-            return f"Treppe: {treppe.Label} ({steps_count} Stufen, {step_height:.1f}mm Steigung, {tread_depth:.0f}mm Auftritt)"
+            steigung = height_mm / steps_count
+            return (
+                f"Treppe: {treppe.Label} ({steps_count} Stufen, "
+                f"{steigung:.1f}mm Steigung) | {self._gate_info(treppe)}"
+            )
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_achse(self, anzahl="5", abstand="5000mm", laenge="14000mm",
-                       bauwerk_name=None, bauwerk_ueberstand="2.0",
-                       x="0mm", y="0mm", z="0mm", drehung="0.0",
-                       nummerierung="1,2,3", blasen_groesse="200",
-                       schrift_groesse="150", linien_breite="2",
-                       blasen_position="Left", labels_anzeigen="True",
-                       schrift_art="", name="Achsen"):
+    def erstelle_achse(
+        self,
+        anzahl="5",
+        abstand="5000mm",
+        laenge="14000mm",
+        bauwerk_name=None,
+        bauwerk_ueberstand="2.0",
+        x="0mm",
+        y="0mm",
+        z="0mm",
+        drehung="0.0",
+        nummerierung="1,2,3",
+        blasen_groesse="200",
+        schrift_groesse="150",
+        linien_breite="2",
+        blasen_position="Left",
+        labels_anzeigen="True",
+        schrift_art="",
+        name="Achsen",
+    ):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
 
             anzahl_int = int(anzahl)
@@ -764,7 +1150,11 @@ class RobustFreeCADBridge:
                     max_dim_mm = 0.0
                     for child in bau.Group:
                         try:
-                            if hasattr(child, "Shape") and child.Shape and child.Shape.isValid():
+                            if (
+                                hasattr(child, "Shape")
+                                and child.Shape
+                                and child.Shape.isValid()
+                            ):
                                 bb = child.Shape.BoundBox
                                 max_dim_mm = max(max_dim_mm, bb.XLength, bb.YLength)
                         except Exception:
@@ -773,19 +1163,29 @@ class RobustFreeCADBridge:
                         laenge_mm = max_dim_mm + float(bauwerk_ueberstand) * 2000.0
             achse.Length = laenge_mm
 
-            if hasattr(achse, "ViewObject"):
+            if hasattr(achse, "ViewObject") and achse.ViewObject:
                 achse.ViewObject.BubbleSize = int(blasen_groesse)
                 achse.ViewObject.FontSize = int(schrift_groesse)
                 achse.ViewObject.LineWidth = int(linien_breite)
-                g_enum = achse.ViewObject.getEnumerationsOfProperty('NumberingStyle')
+                g_enum = achse.ViewObject.getEnumerationsOfProperty("NumberingStyle")
                 if nummerierung not in g_enum:
-                    nummerierung = '1,2,3'
+                    nummerierung = "1,2,3"
                 achse.ViewObject.NumberingStyle = nummerierung
-                bp_map = {"Left": 0, "Right": 1, "Both": 2, "None": 3,
-                          "Arrow Left/Right": 4, "Bar Left/Right": 5}
+                bp_map = {
+                    "Left": 0,
+                    "Right": 1,
+                    "Both": 2,
+                    "None": 3,
+                    "Arrow Left/Right": 4,
+                    "Bar Left/Right": 5,
+                }
                 achse.ViewObject.BubblePosition = bp_map.get(blasen_position, 0)
                 if isinstance(labels_anzeigen, str):
-                    achse.ViewObject.ShowLabel = labels_anzeigen.lower() in ("true", "1", "yes")
+                    achse.ViewObject.ShowLabel = labels_anzeigen.lower() in (
+                        "true",
+                        "1",
+                        "yes",
+                    )
                 else:
                     achse.ViewObject.ShowLabel = bool(labels_anzeigen)
                 if schrift_art:
@@ -796,7 +1196,9 @@ class RobustFreeCADBridge:
             )
 
             if abs(float(drehung)) > 0.001:
-                achse.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), float(drehung))
+                achse.Placement.Rotation = App.Rotation(
+                    App.Vector(0, 0, 1), float(drehung)
+                )
 
             doc.recompute()
             return f"Achsen: {achse.Label}"
@@ -811,17 +1213,29 @@ class RobustFreeCADBridge:
                 abstand=str(a.get("spacing", a.get("abstand", "5000mm"))),
                 laenge=str(a.get("length", a.get("laenge", "14000mm"))),
                 bauwerk_name=a.get("for_building", a.get("bauwerk_name", None)),
-                bauwerk_ueberstand=str(a.get("building_pad", a.get("bauwerk_ueberstand", "2.0"))),
+                bauwerk_ueberstand=str(
+                    a.get("building_pad", a.get("bauwerk_ueberstand", "2.0"))
+                ),
                 x=str(a.get("x", "0mm")),
                 y=str(a.get("y", "0mm")),
                 z=str(a.get("z", "0mm")),
                 drehung=str(a.get("rotation", a.get("drehung", "0.0"))),
-                nummerierung=str(a.get("numbering_style", a.get("nummerierung", "1,2,3"))),
-                blasen_groesse=str(a.get("bubble_size", a.get("blasen_groesse", "200"))),
-                schrift_groesse=str(a.get("font_size", a.get("schrift_groesse", "150"))),
+                nummerierung=str(
+                    a.get("numbering_style", a.get("nummerierung", "1,2,3"))
+                ),
+                blasen_groesse=str(
+                    a.get("bubble_size", a.get("blasen_groesse", "200"))
+                ),
+                schrift_groesse=str(
+                    a.get("font_size", a.get("schrift_groesse", "150"))
+                ),
                 linien_breite=str(a.get("line_width", a.get("linien_breite", "2"))),
-                blasen_position=str(a.get("bubble_position", a.get("blasen_position", "Left"))),
-                labels_anzeigen=str(a.get("show_labels", a.get("labels_anzeigen", "True"))),
+                blasen_position=str(
+                    a.get("bubble_position", a.get("blasen_position", "Left"))
+                ),
+                labels_anzeigen=str(
+                    a.get("show_labels", a.get("labels_anzeigen", "True"))
+                ),
                 schrift_art=str(a.get("font_name", a.get("schrift_art", ""))),
                 name=str(a.get("name", a.get("label", "Achse"))),
             )
@@ -831,6 +1245,7 @@ class RobustFreeCADBridge:
     def erstelle_achsensystem(self, achsen_liste, name="Achsensystem"):
         try:
             import Arch
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -850,14 +1265,19 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_schnittebene(self, x="0mm", y="0mm", z="1500mm", richtung="Z", name="Schnitt_A"):
+    def erstelle_schnittebene(
+        self, x="0mm", y="0mm", z="1500mm", richtung="Z", name="Schnitt_A"
+    ):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             objs = doc.Objects
             section = Arch.makeSectionPlane(objs)
             section.Label = name
-            pos = App.Vector(self._parse_unit(x), self._parse_unit(y), self._parse_unit(z))
+            pos = App.Vector(
+                self._parse_unit(x), self._parse_unit(y), self._parse_unit(z)
+            )
             section.Placement.Base = pos
             if richtung.upper() == "X":
                 section.Placement.Rotation = App.Rotation(App.Vector(0, 1, 0), 90)
@@ -871,6 +1291,7 @@ class RobustFreeCADBridge:
     def klone_objekt(self, quell_name, neuer_name="Klon"):
         try:
             import Draft
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -884,7 +1305,9 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def spiegele_objekt(self, quell_name, achse="X", x=0.0, y=0.0, z=0.0, neuer_name="Gespiegelt"):
+    def spiegele_objekt(
+        self, quell_name, achse="X", x=0.0, y=0.0, z=0.0, neuer_name="Gespiegelt"
+    ):
         try:
             doc = App.ActiveDocument
             if not doc:
@@ -898,22 +1321,34 @@ class RobustFreeCADBridge:
                 dir_vec = App.Vector(0, 1, 0)
             else:
                 dir_vec = App.Vector(0, 0, 1)
+
+            def _mm(v):
+                # Floats = Meter (konsistent zu set_position), Strings = Einheit
+                return (
+                    v * 1000.0 if isinstance(v, (int, float)) else self._parse_unit(v)
+                )
+
             mirrored = doc.addObject("Part::Mirroring", "Gespiegelt")
             mirrored.Source = src
             mirrored.Normal = dir_vec
-            mirrored.Base = App.Vector(x, y, z)
+            mirrored.Base = App.Vector(_mm(x), _mm(y), _mm(z))
             mirrored.Label = neuer_name
             doc.recompute()
-            return f"Gespiegelt: {mirrored.Label}"
+            return f"Gespiegelt: {mirrored.Label} | {self._gate_info(mirrored)}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
     # --- BIM Erweiterung Phase 2 ---
-    def erstelle_text(self, text, x="0mm", y="0mm", z="0mm", groesse="100mm", name="Text"):
+    def erstelle_text(
+        self, text, x="0mm", y="0mm", z="0mm", groesse="100mm", name="Text"
+    ):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            pos = App.Vector(self._parse_unit(x), self._parse_unit(y), self._parse_unit(z))
+            pos = App.Vector(
+                self._parse_unit(x), self._parse_unit(y), self._parse_unit(z)
+            )
             txt = Draft.makeText(text, point=pos)
             txt.Label = name
             if hasattr(txt, "FontSize"):
@@ -926,6 +1361,7 @@ class RobustFreeCADBridge:
     def erstelle_bemassung(self, p1, p2, p3, name="Mass"):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             v1, v2, v3 = self.to_vector(p1), self.to_vector(p2), self.to_vector(p3)
             dim = Draft.makeDimension(v1, v2, v3)
@@ -935,11 +1371,14 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_verrundung(self, obj_name, radius="5mm", kanten_indizes=None, name="Verrundet"):
+    def erstelle_verrundung(
+        self, obj_name, radius="5mm", kanten_indizes=None, name="Verrundet"
+    ):
         if kanten_indizes is None:
             kanten_indizes = []
         try:
             import Part
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -955,7 +1394,7 @@ class RobustFreeCADBridge:
             result = doc.addObject("Part::Feature", "Verrundet")
             result.Shape = neue_form
             result.Label = name
-            if hasattr(src, "ViewObject"):
+            if hasattr(src, "ViewObject") and src.ViewObject:
                 src.ViewObject.Visibility = False
             doc.recompute()
             return f"Verrundet: {result.Label}"
@@ -979,19 +1418,24 @@ class RobustFreeCADBridge:
             result = doc.addObject("Part::Feature", "Gefast")
             result.Shape = neue_form
             result.Label = name
-            if hasattr(src, "ViewObject"):
+            if hasattr(src, "ViewObject") and src.ViewObject:
                 src.ViewObject.Visibility = False
             doc.recompute()
             return f"Gefast: {result.Label}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_paneel(self, laenge="1000mm", breite="500mm", dicke="50mm", name="Paneel"):
+    def erstelle_paneel(
+        self, laenge="1000mm", breite="500mm", dicke="50mm", name="Paneel"
+    ):
         try:
             import Arch, Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            rect = Draft.makeRectangle(self._parse_unit(laenge), self._parse_unit(breite))
-            if hasattr(rect, "ViewObject"):
+            rect = Draft.makeRectangle(
+                self._parse_unit(laenge), self._parse_unit(breite)
+            )
+            if hasattr(rect, "ViewObject") and rect.ViewObject:
                 rect.ViewObject.Visibility = False
             panel = Arch.makePanel(rect, thickness=self._parse_unit(dicke))
             panel.Label = name
@@ -1003,6 +1447,7 @@ class RobustFreeCADBridge:
     def importiere_dxf(self, dateipfad):
         try:
             import importDXF
+
             safe_path = self._sanitize_path(dateipfad)
             self._audit("IMPORT", f"DXF von {safe_path}")
             if not os.path.exists(safe_path):
@@ -1019,8 +1464,10 @@ class RobustFreeCADBridge:
     def exportiere_dxf(self, dateipfad="export.dxf"):
         try:
             import importDXF
+
             doc = App.ActiveDocument
-            if not doc: return "Fehler: Kein aktives Dokument."
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
             safe_path = self._sanitize_path(dateipfad)
             self._audit("EXPORT", f"DXF nach {safe_path}")
             importDXF.export(doc.Objects, safe_path)
@@ -1033,10 +1480,13 @@ class RobustFreeCADBridge:
     def exportiere_pdf(self, dateipfad="plan.pdf"):
         try:
             import FreeCADGui
+
             doc = App.ActiveDocument
-            if not doc: return "Fehler: Kein aktives Dokument."
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
             gui_doc = FreeCADGui.ActiveDocument
-            if not gui_doc: return "Fehler: Kein GUI-Dokument (keine Seiten vorhanden?)."
+            if not gui_doc:
+                return "Fehler: Kein GUI-Dokument (keine Seiten vorhanden?)."
             safe_path = self._sanitize_path(dateipfad)
             self._audit("EXPORT", f"PDF nach {safe_path}")
             gui_doc.exportPage(safe_path)
@@ -1049,8 +1499,10 @@ class RobustFreeCADBridge:
     def exportiere_svg(self, dateipfad="export.svg"):
         try:
             import importSVG
+
             doc = App.ActiveDocument
-            if not doc: return "Fehler: Kein aktives Dokument."
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
             safe_path = self._sanitize_path(dateipfad)
             self._audit("EXPORT", f"SVG nach {safe_path}")
             importSVG.export(doc.Objects, safe_path)
@@ -1061,9 +1513,17 @@ class RobustFreeCADBridge:
             return f"Fehler: {str(e)}"
 
     # --- BIM Erweiterung Phase 3 ---
-    def erstelle_fenster_skizze(self, wand_bezeichnung, breite="900mm", hoehe="1200mm", brüstung="900mm", name="Fenster_Skizze"):
+    def erstelle_fenster_skizze(
+        self,
+        wand_bezeichnung,
+        breite="900mm",
+        hoehe="1200mm",
+        brüstung="900mm",
+        name="Fenster_Skizze",
+    ):
         try:
             import Arch, Draft
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -1086,20 +1546,27 @@ class RobustFreeCADBridge:
             window = Arch.makeWindow(rect)
             window.Label = name
             window.Hosts = [wall]
-            if hasattr(rect, "ViewObject"):
+            if hasattr(rect, "ViewObject") and rect.ViewObject:
                 rect.ViewObject.Visibility = False
             doc.recompute()
             return f"Fenster (Skizze): {window.Label}"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_vorhangfassade(self, wire_punkte, panel_breite="1000mm", panel_hoehe="2500mm", name="Vorhangfassade"):
+    def erstelle_vorhangfassade(
+        self,
+        wire_punkte,
+        panel_breite="1000mm",
+        panel_hoehe="2500mm",
+        name="Vorhangfassade",
+    ):
         try:
             import Arch, Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             vektoren = [self.to_vector(p) for p in wire_punkte]
             wire = Draft.makeWire(vektoren, closed=False)
-            if hasattr(wire, "ViewObject"):
+            if hasattr(wire, "ViewObject") and wire.ViewObject:
                 wire.ViewObject.Visibility = False
             fassade = Arch.makeCurtainWall(wire)
             fassade.Label = name
@@ -1107,23 +1574,30 @@ class RobustFreeCADBridge:
             pb = self._parse_unit(panel_breite)
             ph = self._parse_unit(panel_hoehe)
             if not hasattr(fassade, "PanelWidth"):
-                fassade.addProperty("App::PropertyLength", "PanelWidth", "Arch", "Panel width")
+                fassade.addProperty(
+                    "App::PropertyLength", "PanelWidth", "Arch", "Panel width"
+                )
             fassade.PanelWidth = pb
             if not hasattr(fassade, "PanelHeight"):
-                fassade.addProperty("App::PropertyLength", "PanelHeight", "Arch", "Panel height")
+                fassade.addProperty(
+                    "App::PropertyLength", "PanelHeight", "Arch", "Panel height"
+                )
             fassade.PanelHeight = ph
             doc.recompute()
             return f"Vorhangfassade: {fassade.Label} ({fassade.Name})"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_rohr(self, wire_punkte, aussen_durchmesser="100mm", wandstaerke="5mm", name="Rohr"):
+    def erstelle_rohr(
+        self, wire_punkte, aussen_durchmesser="100mm", wandstaerke="5mm", name="Rohr"
+    ):
         try:
             import Arch, Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             vektoren = [self.to_vector(p) for p in wire_punkte]
             wire = Draft.makeWire(vektoren, closed=False)
-            if hasattr(wire, "ViewObject"):
+            if hasattr(wire, "ViewObject") and wire.ViewObject:
                 wire.ViewObject.Visibility = False
             rohr = Arch.makePipe(wire, diameter=self._parse_unit(aussen_durchmesser))
             rohr.Label = name
@@ -1135,6 +1609,7 @@ class RobustFreeCADBridge:
     def erstelle_kanal(self, wire_punkte, breite="300mm", hoehe="200mm", name="Kanal"):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             vektoren = [self.to_vector(p) for p in wire_punkte]
             if len(vektoren) < 2:
@@ -1142,11 +1617,11 @@ class RobustFreeCADBridge:
             b = self._parse_unit(breite)
             h = self._parse_unit(hoehe)
             pfad = Draft.makeWire(vektoren, closed=False)
-            if hasattr(pfad, "ViewObject"):
+            if hasattr(pfad, "ViewObject") and pfad.ViewObject:
                 pfad.ViewObject.Visibility = False
             profil = Draft.makeRectangle(b, h)
             profil.Placement.Base = vektoren[0]
-            if hasattr(profil, "ViewObject"):
+            if hasattr(profil, "ViewObject") and profil.ViewObject:
                 profil.ViewObject.Visibility = False
             doc.recompute()
             sweep = doc.addObject("Part::Sweep", "Kanal")
@@ -1160,9 +1635,12 @@ class RobustFreeCADBridge:
         except Exception as e:
             return f"Fehler: {str(e)}"
 
-    def erstelle_auszug(self, obj_typ="Window", eigenschaften="Label,Width,Height", name="Auszug"):
+    def erstelle_auszug(
+        self, obj_typ="Window", eigenschaften="Label,Width,Height", name="Auszug"
+    ):
         try:
             import Arch
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -1178,9 +1656,14 @@ class RobustFreeCADBridge:
             props_list = [p.strip() for p in eigenschaften.split(",")]
             treffer = 0
             for o in doc.Objects:
-                if (obj_typ.lower() in o.TypeId.lower() or 
-                    (hasattr(o, "IfcType") and obj_typ.lower() in str(o.IfcType).lower()) or
-                    obj_typ.lower() in o.Label.lower()):
+                if (
+                    obj_typ.lower() in o.TypeId.lower()
+                    or (
+                        hasattr(o, "IfcType")
+                        and obj_typ.lower() in str(o.IfcType).lower()
+                    )
+                    or obj_typ.lower() in o.Label.lower()
+                ):
                     treffer += 1
                     werte = [o.Label]
                     for p in props_list:
@@ -1198,6 +1681,7 @@ class RobustFreeCADBridge:
         try:
             import FreeCADGui as Gui
             import TechDraw
+
             doc = App.ActiveDocument
             if not doc:
                 return "Fehler: Kein aktives Dokument."
@@ -1234,68 +1718,118 @@ class RobustFreeCADBridge:
     def erstelle_punkt(self, x="0mm", y="0mm", z="0mm", name="Punkt"):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            point = Draft.makePoint(self._parse_unit(x), self._parse_unit(y), self._parse_unit(z))
+            point = Draft.makePoint(
+                self._parse_unit(x), self._parse_unit(y), self._parse_unit(z)
+            )
             point.Label = name
             doc.recompute()
             return f"Punkt: {point.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def erstelle_draft_line(self, p1, p2, name="Linie"):
         try:
             import Draft
+
             v1, v2 = self.to_vector(p1), self.to_vector(p2)
             line = Draft.make_line(v1, v2)
-            line.Label = name; App.ActiveDocument.recompute()
+            line.Label = name
+            App.ActiveDocument.recompute()
             return f"Draft-Linie: {line.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def erstelle_draft_polyline(self, points, closed=True):
         try:
             import Draft
+
             wire = Draft.make_wire([self.to_vector(p) for p in points], closed=closed)
             App.ActiveDocument.recompute()
             return f"Draft-Polyline: {wire.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_rechteck(self, length="100mm", width="50mm", placement_x="0mm", placement_y="0mm", placement_z="0mm"):
+    def erstelle_rechteck(
+        self,
+        length="100mm",
+        width="50mm",
+        placement_x="0mm",
+        placement_y="0mm",
+        placement_z="0mm",
+    ):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            rect = Draft.makeRectangle(self._parse_unit(length), self._parse_unit(width))
-            rect.Placement.Base = App.Vector(self._parse_unit(placement_x), self._parse_unit(placement_y), self._parse_unit(placement_z))
+            rect = Draft.makeRectangle(
+                self._parse_unit(length), self._parse_unit(width)
+            )
+            rect.Placement.Base = App.Vector(
+                self._parse_unit(placement_x),
+                self._parse_unit(placement_y),
+                self._parse_unit(placement_z),
+            )
             doc.recompute()
             return f"Rechteck: {rect.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_kreis(self, radius="50mm", placement_x="0mm", placement_y="0mm", placement_z="0mm"):
+    def erstelle_kreis(
+        self, radius="50mm", placement_x="0mm", placement_y="0mm", placement_z="0mm"
+    ):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             circ = Draft.makeCircle(self._parse_unit(radius))
-            circ.Placement.Base = App.Vector(self._parse_unit(placement_x), self._parse_unit(placement_y), self._parse_unit(placement_z))
+            circ.Placement.Base = App.Vector(
+                self._parse_unit(placement_x),
+                self._parse_unit(placement_y),
+                self._parse_unit(placement_z),
+            )
             doc.recompute()
             return f"Kreis: {circ.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_kreisbogen(self, center_x="0mm", center_y="0mm", center_z="0mm", radius="50mm", start_angle="0deg", end_angle="90deg"):
+    def erstelle_kreisbogen(
+        self,
+        center_x="0mm",
+        center_y="0mm",
+        center_z="0mm",
+        radius="50mm",
+        start_angle="0deg",
+        end_angle="90deg",
+    ):
         try:
             import Draft
+
             doc = App.ActiveDocument or App.newDocument("BIM")
-            s_ang = float(str(start_angle).replace('deg',''))
-            e_ang = float(str(end_angle).replace('deg',''))
-            arc = Draft.makeCircle(self._parse_unit(radius), startangle=s_ang, endangle=e_ang)
-            arc.Placement.Base = App.Vector(self._parse_unit(center_x), self._parse_unit(center_y), self._parse_unit(center_z))
+            s_ang = float(str(start_angle).replace("deg", ""))
+            e_ang = float(str(end_angle).replace("deg", ""))
+            arc = Draft.makeCircle(
+                self._parse_unit(radius), startangle=s_ang, endangle=e_ang
+            )
+            arc.Placement.Base = App.Vector(
+                self._parse_unit(center_x),
+                self._parse_unit(center_y),
+                self._parse_unit(center_z),
+            )
             doc.recompute()
             return f"Bogen: {arc.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     # --- Metadaten & IFC ---
     def setze_ifc_daten(self, object_name, properties_json="{}"):
         try:
             obj = self._get_obj(object_name)
-            if not obj: return "Objekt nicht gefunden."
+            if not obj:
+                return "Objekt nicht gefunden."
             import json
+
             props = json.loads(properties_json)
             for k, v in props.items():
                 if not hasattr(obj, k):
@@ -1303,18 +1837,48 @@ class RobustFreeCADBridge:
                 setattr(obj, k, str(v))
             App.ActiveDocument.recompute()
             return "IFC-Daten gesetzt."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def setze_ifc_typ(self, obj_name, ifc_type):
+        try:
+            obj = self._get_obj(obj_name)
+            if not obj:
+                return "Nicht gefunden."
+            if not hasattr(obj, "IfcType"):
+                return (
+                    f"Fehler: Objekt '{obj.Label}' (Typ {obj.TypeId}) hat keine "
+                    "IfcType-Property. Nur Arch-Objekte (Wand, Slab, Panel, "
+                    "Fenster, ...) unterstuetzen IfcType."
+                )
+            ifc_type = str(ifc_type).strip()
+            enum = None
+            try:
+                enum = obj.getEnumerationsOfProperty("IfcType")
+            except Exception:
+                pass
+            if enum and ifc_type not in enum:
+                return (
+                    f"Fehler: Ungültiger IfcType '{ifc_type}'. "
+                    f"Gültig: {', '.join(enum)}"
+                )
+            obj.IfcType = ifc_type
+            App.ActiveDocument.recompute()
+            return f"IfcType gesetzt: {obj.Label} -> '{ifc_type}'"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def setze_material(self, obj_name, material_name, color_rgb=(0.8, 0.8, 0.8)):
         try:
             obj = self._get_obj(obj_name)
-            if not obj: return "Objekt nicht gefunden."
-            
+            if not obj:
+                return "Objekt nicht gefunden."
+
             mat = App.ActiveDocument.getObject(material_name)
             if not mat:
                 mat = App.ActiveDocument.addObject("App::MaterialObject", material_name)
                 mat.Label = material_name
-            
+
             if isinstance(color_rgb, list):
                 color_rgb = tuple(color_rgb)
             if isinstance(color_rgb, (tuple, list)):
@@ -1323,15 +1887,18 @@ class RobustFreeCADBridge:
             else:
                 color_str = str(color_rgb)
                 shape_color = (0.8, 0.8, 0.8)
-            mat.Material = {'Name': material_name, 'DiffuseColor': color_str}
+            mat.Material = {"Name": material_name, "DiffuseColor": color_str}
             obj.Material = mat
             if hasattr(obj, "ViewObject") and obj.ViewObject:
                 obj.ViewObject.ShapeColor = shape_color
             App.ActiveDocument.recompute()
             return "Material gesetzt."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def setze_material_mehrere(self, objekte_liste, material_name, color_rgb=(0.8, 0.8, 0.8)):
+    def setze_material_mehrere(
+        self, objekte_liste, material_name, color_rgb=(0.8, 0.8, 0.8)
+    ):
         try:
             doc = App.ActiveDocument
             mat = doc.getObject(material_name)
@@ -1346,51 +1913,106 @@ class RobustFreeCADBridge:
             else:
                 color_str = str(color_rgb)
                 shape_color = (0.8, 0.8, 0.8)
-            mat.Material = {'Name': material_name, 'DiffuseColor': color_str}
+            mat.Material = {"Name": material_name, "DiffuseColor": color_str}
             set_count = 0
             for obj_name in objekte_liste:
                 obj = self._get_obj(obj_name)
-                if not obj: continue
+                if not obj:
+                    continue
                 obj.Material = mat
                 if hasattr(obj, "ViewObject") and obj.ViewObject:
                     obj.ViewObject.ShapeColor = shape_color
                 set_count += 1
             doc.recompute()
             return f"Material '{material_name}' an {set_count} Objekt(e) gesetzt."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def ermittle_mengen(self, obj_name):
         try:
             obj = self._get_obj(obj_name)
-            if not obj: return "Objekt nicht gefunden."
-            q = {}
-            for k in ["Area", "Volume", "Length", "Height", "Width"]:
-                if hasattr(obj, k) and getattr(obj, k) is not None:
-                    val = getattr(obj, k)
-                    q[k] = f"{val}"
-            return f"Mengen für {obj.Label}:\n" + "\n".join([f"- {k}: {v}" for k, v in q.items()])
-        except Exception as e: return f"Fehler: {str(e)}"
+            if not obj:
+                return "Objekt nicht gefunden."
+            if not (hasattr(obj, "Shape") and obj.Shape and not obj.Shape.isNull()):
+                return f"Mengen für {obj.Label}: keine Geometrie (Typ: {obj.TypeId})."
+            s = obj.Shape
+            bb = s.BoundBox
+            lines = [
+                f"Mengen für {obj.Label}:",
+                f"- Volume: {s.Volume:.1f} mm3 ({s.Volume * 1e-9:.4f} m3)",
+            ]
+            try:
+                lines.append(f"- Area: {s.Area:.1f} mm2 ({s.Area * 1e-6:.4f} m2)")
+            except Exception:
+                pass
+            if hasattr(s, "Perimeter"):
+                try:
+                    lines.append(
+                        f"- Perimeter: {s.Perimeter:.1f} mm ({s.Perimeter / 1000.0:.4f} m)"
+                    )
+                except Exception:
+                    pass
+            lines.append(
+                f"- BBox Länge/Breite/Höhe: "
+                f"{bb.XLength:.1f}/{bb.YLength:.1f}/{bb.ZLength:.1f} mm"
+            )
+            return "\n".join(lines)
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def exportiere_ifc(self, file_path="model.ifc"):
         try:
             import Arch
-            if not App.ActiveDocument: return "Kein aktives Dokument."
+
+            if not App.ActiveDocument:
+                return "Kein aktives Dokument."
             safe_path = self._sanitize_path(file_path)
             self._audit("EXPORT", f"IFC nach {safe_path}")
             try:
                 import importIFC
+
                 importIFC.export(App.ActiveDocument.Objects, safe_path)
                 return f"Exportiert: {os.path.basename(safe_path)}"
             except ImportError:
                 if hasattr(Arch, "export"):
                     Arch.export(App.ActiveDocument.Objects, safe_path)
-                    return f"Exportiert (via Arch.Fallback): {os.path.basename(safe_path)}"
-                return ("Fehler: Export-Modul nicht gefunden. "
-                        "Weder importIFC noch Arch.export verfügbar. "
-                        "Bitte installiere 'importIFC' über den FreeCAD-Addon-Manager.")
+                    return (
+                        f"Exportiert (via Arch.Fallback): {os.path.basename(safe_path)}"
+                    )
+                return (
+                    "Fehler: Export-Modul nicht gefunden. "
+                    "Weder importIFC noch Arch.export verfügbar. "
+                    "Bitte installiere 'importIFC' über den FreeCAD-Addon-Manager."
+                )
         except PermissionError as e:
             return f"Fehler: {str(e)}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def speichere_dokument(self, pfad=None):
+        try:
+            doc = App.ActiveDocument
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
+            if pfad:
+                safe_path = self._sanitize_path(pfad)
+                if not safe_path.lower().endswith(".fcstd"):
+                    safe_path += ".FCStd"
+                self._audit("SAVE", f"Dokument nach {safe_path}")
+                doc.saveAs(safe_path)
+                return f"Gespeichert: {safe_path} ({len(doc.Objects)} Objekte)"
+            if not doc.FileName:
+                return (
+                    "Fehler: Dokument wurde noch nie gespeichert und kein Pfad "
+                    "angegeben. Bitte save_document mit path=... aufrufen."
+                )
+            self._audit("SAVE", f"Dokument {doc.FileName}")
+            doc.save()
+            return f"Gespeichert: {doc.FileName} ({len(doc.Objects)} Objekte)"
+        except PermissionError as e:
+            return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def analysiere_ifc(self, file_path):
         try:
@@ -1399,25 +2021,30 @@ class RobustFreeCADBridge:
             if not os.path.exists(safe_path):
                 return "Fehler: Datei nicht gefunden."
             import ifcopenshell
+
             f = ifcopenshell.open(safe_path)
             res = f"Projekt: {f.by_type('IfcProject')[0].Name if f.by_type('IfcProject') else '?'}\n"
             counts = {}
-            for e in f.by_type("IfcRoot"): counts[e.is_a()] = counts.get(e.is_a(), 0) + 1
+            for e in f.by_type("IfcRoot"):
+                counts[e.is_a()] = counts.get(e.is_a(), 0) + 1
             return res + "\n".join([f"- {k}: {v}" for k, v in sorted(counts.items())])
         except PermissionError as e:
             return f"Fehler: {str(e)}"
-        except Exception as e: return f"Fehler: {str(e)}"
-
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     # --- Neue Tools (MCP Tool Lücken) ---
     def objekt_info_abrufen(self, name):
         try:
             obj = self._get_obj(name)
-            if not obj: return "Nicht gefunden."
+            if not obj:
+                return "Nicht gefunden."
             lines = [f"Label: {obj.Label}", f"Name: {obj.Name}", f"Type: {obj.TypeId}"]
             if hasattr(obj, "Shape") and obj.Shape:
                 bb = obj.Shape.BoundBox
-                lines.append(f"BBox: X({bb.XMin:.1f}..{bb.XMax:.1f}) Y({bb.YMin:.1f}..{bb.YMax:.1f}) Z({bb.ZMin:.1f}..{bb.ZMax:.1f})")
+                lines.append(
+                    f"BBox: X({bb.XMin:.1f}..{bb.XMax:.1f}) Y({bb.YMin:.1f}..{bb.YMax:.1f}) Z({bb.ZMin:.1f}..{bb.ZMax:.1f})"
+                )
                 lines.append(f"Volume: {obj.Shape.Volume:.1f}")
             for attr in ["Align", "Width", "Height", "Length"]:
                 if hasattr(obj, attr):
@@ -1428,29 +2055,38 @@ class RobustFreeCADBridge:
             if hasattr(obj, "Base") and obj.Base and hasattr(obj.Base, "Shape"):
                 vs = obj.Base.Shape.Vertexes
                 if len(vs) >= 2:
-                    lines.append(f"Start: ({vs[0].Point.x:.1f}, {vs[0].Point.y:.1f}, {vs[0].Point.z:.1f})")
-                    lines.append(f"End: ({vs[-1].Point.x:.1f}, {vs[-1].Point.y:.1f}, {vs[-1].Point.z:.1f})")
+                    lines.append(
+                        f"Start: ({vs[0].Point.x:.1f}, {vs[0].Point.y:.1f}, {vs[0].Point.z:.1f})"
+                    )
+                    lines.append(
+                        f"End: ({vs[-1].Point.x:.1f}, {vs[-1].Point.y:.1f}, {vs[-1].Point.z:.1f})"
+                    )
             return "\n".join(lines)
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def umbenennen_objekt(self, obj_name, neues_label):
         try:
             obj = self._get_obj(obj_name)
-            if not obj: return "Nicht gefunden."
+            if not obj:
+                return "Nicht gefunden."
             obj.Label = neues_label
             App.ActiveDocument.recompute()
             return f"Umbenannt: {obj.Name} -> '{neues_label}'"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def sichtbarkeit_setzen(self, name, sichtbar):
         try:
             obj = self._get_obj(name)
-            if not obj: return "Nicht gefunden."
+            if not obj:
+                return "Nicht gefunden."
             if hasattr(obj, "ViewObject") and obj.ViewObject:
                 obj.ViewObject.Visibility = bool(sichtbar)
                 return f"Sichtbarkeit {name}: {sichtbar}"
             return "Kein ViewObject."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def _setze_linie_endpunkte(self, line_obj, start_v, end_v):
         """Setzt die Endpunkte einer Draft-Linie (unterstützt Start/End und StartPoint/EndPoint)."""
@@ -1469,7 +2105,8 @@ class RobustFreeCADBridge:
     def linie_verschieben(self, name, start_pkt, end_pkt):
         try:
             obj = self._get_obj(name)
-            if not obj: return "Nicht gefunden."
+            if not obj:
+                return "Nicht gefunden."
             start_v = self.to_vector(start_pkt)
             end_v = self.to_vector(end_pkt)
             if hasattr(obj, "StartPoint") or hasattr(obj, "Start"):
@@ -1477,77 +2114,130 @@ class RobustFreeCADBridge:
                 App.ActiveDocument.recompute()
                 return f"Linie {name} verschoben."
             return "Keine Draft-Linie."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def wand_ausrichtung_setzen(self, wand_name, ref_aussen=True):
         try:
             wall = self._get_obj(wand_name)
-            if not wall: return "Nicht gefunden."
-            if not hasattr(wall, "Base") or not wall.Base: return "Keine Basislinie."
+            if not wall:
+                return "Nicht gefunden."
+            if not hasattr(wall, "Base") or not wall.Base:
+                return "Keine Basislinie."
             base_line = wall.Base
             vs = base_line.Shape.Vertexes
-            if len(vs) < 2: return "Ungültige Basis."
+            if len(vs) < 2:
+                return "Ungültige Basis."
             v_start, v_ende = vs[0].Point, vs[-1].Point
             w_dir = (v_ende - v_start).normalize()
             w_breite = float(wall.Width) if hasattr(wall, "Width") else 200.0
             linke_normale = App.Vector(0, 0, 1).cross(w_dir).normalize()
             versatz = w_breite / 2.0
             if ref_aussen:
-                self._setze_linie_endpunkte(base_line, v_start + linke_normale * versatz, v_ende + linke_normale * versatz)
+                self._setze_linie_endpunkte(
+                    base_line,
+                    v_start + linke_normale * versatz,
+                    v_ende + linke_normale * versatz,
+                )
                 wall.Align = "Right"
             else:
-                self._setze_linie_endpunkte(base_line, v_start - linke_normale * versatz, v_ende - linke_normale * versatz)
+                self._setze_linie_endpunkte(
+                    base_line,
+                    v_start - linke_normale * versatz,
+                    v_ende - linke_normale * versatz,
+                )
                 wall.Align = "Left"
             App.ActiveDocument.recompute()
             return f"Ausrichtung gesetzt: {wand_name}, ref_aussen={ref_aussen}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def bool_cut_finalisieren(self, schnitt_name, neues_label, container="", verstecken=True):
+    def bool_cut_finalisieren(
+        self, schnitt_name, neues_label, container="", verstecken=True
+    ):
         try:
             cut = self._get_obj(schnitt_name)
-            if not cut: return "Nicht gefunden."
+            if not cut:
+                return "Nicht gefunden."
             cut.Label = neues_label
             if verstecken:
-                if hasattr(cut, "Base") and cut.Base and hasattr(cut.Base, "ViewObject"):
+                if (
+                    hasattr(cut, "Base")
+                    and cut.Base
+                    and hasattr(cut.Base, "ViewObject")
+                    and cut.Base.ViewObject
+                ):
                     cut.Base.ViewObject.Visibility = False
-                if hasattr(cut, "Tool") and cut.Tool and hasattr(cut.Tool, "ViewObject"):
+                if (
+                    hasattr(cut, "Tool")
+                    and cut.Tool
+                    and hasattr(cut.Tool, "ViewObject")
+                    and cut.Tool.ViewObject
+                ):
                     cut.Tool.ViewObject.Visibility = False
             if container:
                 cont = self._get_obj(container)
                 if cont:
-                    if hasattr(cont, "addObject"): cont.addObject(cut)
+                    if hasattr(cont, "addObject"):
+                        cont.addObject(cut)
                     elif hasattr(cont, "Group"):
-                        g = list(cont.Group); g.append(cut); cont.Group = g
+                        g = list(cont.Group)
+                        g.append(cut)
+                        cont.Group = g
             App.ActiveDocument.recompute()
             return f"Finalisiert: {neues_label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_oeffnung(self, base_obj_name, form="rectangle", pos=None, groesse=None, name="Oeffnung"):
+    def erstelle_oeffnung(
+        self, base_obj_name, form="rectangle", pos=None, groesse=None, name="Oeffnung"
+    ):
         try:
-            if pos is None: pos = [0, 0, 0]
-            if groesse is None: groesse = [1, 1, 0.2]
+            if pos is None:
+                pos = [0, 0, 0]
+            if groesse is None:
+                groesse = [1, 1, 0.2]
             doc = App.ActiveDocument
             base = self._get_obj(base_obj_name)
-            if not base: return "Base nicht gefunden."
+            if not base:
+                return "Base nicht gefunden."
             pos_v = self.to_vector(pos)
-            g_x = groesse[0] * 1000.0 if isinstance(groesse[0], (int, float)) else self._parse_unit(groesse[0])
-            g_y = groesse[1] * 1000.0 if isinstance(groesse[1], (int, float)) else self._parse_unit(groesse[1])
-            g_z = groesse[2] * 1000.0 if isinstance(groesse[2], (int, float)) else self._parse_unit(groesse[2])
+            g_x = (
+                groesse[0] * 1000.0
+                if isinstance(groesse[0], (int, float))
+                else self._parse_unit(groesse[0])
+            )
+            g_y = (
+                groesse[1] * 1000.0
+                if isinstance(groesse[1], (int, float))
+                else self._parse_unit(groesse[1])
+            )
+            g_z = (
+                groesse[2] * 1000.0
+                if isinstance(groesse[2], (int, float))
+                else self._parse_unit(groesse[2])
+            )
             tool = doc.addObject("Part::Box", "OpeningTool")
             tool.Length, tool.Width, tool.Height = g_x, g_y, g_z
             tool.Placement.Base = pos_v
             cut = doc.addObject("Part::Cut", name)
             cut.Base, cut.Tool = base, tool
-            if hasattr(base, "ViewObject"): base.ViewObject.Visibility = False
-            if hasattr(tool, "ViewObject"): tool.ViewObject.Visibility = False
+            if hasattr(base, "ViewObject") and base.ViewObject:
+                base.ViewObject.Visibility = False
+            if hasattr(tool, "ViewObject") and tool.ViewObject:
+                tool.ViewObject.Visibility = False
             cut.Label = name
             doc.recompute()
             return f"Öffnung: {cut.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def kopiere_nach_geschoss(self, wand_liste, ziel_geschoss, z_versatz=3.24, x_verlaengerung=0.0):
+    def kopiere_nach_geschoss(
+        self, wand_liste, ziel_geschoss, z_versatz=3.24, x_verlaengerung=0.0
+    ):
         try:
             import Arch, Draft
+
             doc = App.ActiveDocument
             z_mm = z_versatz * 1000.0
             x_ext_mm = x_verlaengerung * 1000.0
@@ -1555,7 +2245,8 @@ class RobustFreeCADBridge:
             created = []
             for wn in wand_liste:
                 src = self._get_obj(wn)
-                if not src: continue
+                if not src:
+                    continue
                 if hasattr(src, "Base") and src.Base:
                     vs = src.Base.Shape.Vertexes
                     v1, v2 = vs[0].Point, vs[-1].Point
@@ -1565,33 +2256,48 @@ class RobustFreeCADBridge:
                         richtung = (v2 - v1).normalize()
                         v2_new = v2_new + richtung * x_ext_mm
                     new_line = Draft.make_line(v1_new, v2_new)
-                    if hasattr(new_line, "ViewObject"): new_line.ViewObject.Visibility = False
+                    if hasattr(new_line, "ViewObject") and new_line.ViewObject:
+                        new_line.ViewObject.Visibility = False
                     new_wall = Arch.makeWall(new_line)
                     new_wall.Width = src.Width if hasattr(src, "Width") else 300.0
                     new_wall.Height = src.Height if hasattr(src, "Height") else 2500.0
                     new_wall.Align = src.Align if hasattr(src, "Align") else "Left"
                     new_wall.Label = f"{src.Label}_OG"
                     if ziel:
-                        if hasattr(ziel, "addObject"): ziel.addObject(new_wall)
+                        if hasattr(ziel, "addObject"):
+                            ziel.addObject(new_wall)
                         elif hasattr(ziel, "Group"):
-                            g = list(ziel.Group); g.append(new_wall); ziel.Group = g
+                            g = list(ziel.Group)
+                            g.append(new_wall)
+                            ziel.Group = g
                     created.append(new_wall.Label)
             doc.recompute()
-            return f"Kopiert: {', '.join(created)}" if created else "Keine Wände kopiert."
-        except Exception as e: return f"Fehler: {str(e)}"
+            return (
+                f"Kopiert: {', '.join(created)}" if created else "Keine Wände kopiert."
+            )
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_attika(self, platte_name, hoehe=0.3, dicke=0.365, versatz=0.0, prefix="Attika"):
+    def erstelle_attika(
+        self, platte_name, hoehe=0.3, dicke=0.365, versatz=0.0, prefix="Attika"
+    ):
         try:
             import Arch, Draft
+
             doc = App.ActiveDocument
             slab = self._get_obj(platte_name)
-            if not slab: return "Platte nicht gefunden."
-            h_mm = hoehe * 1000.0; d_mm = dicke * 1000.0; v_mm = versatz * 1000.0
+            if not slab:
+                return "Platte nicht gefunden."
+            h_mm = hoehe * 1000.0
+            d_mm = dicke * 1000.0
+            v_mm = versatz * 1000.0
             base_shape = slab.Base if hasattr(slab, "Base") and slab.Base else slab
             shape = base_shape.Shape if hasattr(base_shape, "Shape") else None
-            if not shape: return "Keine Shape."
+            if not shape:
+                return "Keine Shape."
             wires = shape.Wires
-            if not wires: return "Keine Drähte."
+            if not wires:
+                return "Keine Drähte."
             edges = wires[0].Edges if wires[0].isClosed() else wires[0].Edges
             created = []
             for i, edge in enumerate(edges):
@@ -1599,57 +2305,101 @@ class RobustFreeCADBridge:
                 if v_mm != 0.0:
                     e_dir = (v2 - v1).normalize()
                     n_dir = App.Vector(0, 0, 1).cross(e_dir).normalize()
-                    v1 += n_dir * v_mm; v2 += n_dir * v_mm
+                    v1 += n_dir * v_mm
+                    v2 += n_dir * v_mm
                 line = Draft.make_line(v1, v2)
-                if hasattr(line, "ViewObject"): line.ViewObject.Visibility = False
+                if hasattr(line, "ViewObject") and line.ViewObject:
+                    line.ViewObject.Visibility = False
                 wall = Arch.makeWall(line)
-                wall.Width = d_mm; wall.Height = h_mm
-                wall.Label = f"{prefix}_{i+1}"
+                wall.Width = d_mm
+                wall.Height = h_mm
+                wall.Label = f"{prefix}_{i + 1}"
                 wall.Align = "Left"
                 doc.recompute()
                 created.append(wall.Label)
-            return f"Attika: {', '.join(created)}" if created else "Keine Attika erstellt."
-        except Exception as e: return f"Fehler: {str(e)}"
+            return (
+                f"Attika: {', '.join(created)}" if created else "Keine Attika erstellt."
+            )
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
-    def erstelle_decke_mit_oeffnungen(self, laenge="10m", breite="8m", hoehe="300mm",
-                                    px="0mm", py="0mm", pz="0mm", oeffnungen=None, name="Geschossdecke"):
+    def erstelle_decke_mit_oeffnungen(
+        self,
+        laenge="10m",
+        breite="8m",
+        hoehe="300mm",
+        px="0mm",
+        py="0mm",
+        pz="0mm",
+        oeffnungen=None,
+        name="Geschossdecke",
+        richtung="-z",
+    ):
         try:
-            if oeffnungen is None: oeffnungen = []
+            if oeffnungen is None:
+                oeffnungen = []
+            if richtung not in ("-z", "+z"):
+                return (
+                    f"Fehler: Unbekannte Richtung '{richtung}'. Erlaubt: "
+                    "'-z' (placement_z=Oberkante) oder '+z' (placement_z=Unterkante)."
+                )
             doc = App.ActiveDocument or App.newDocument("BIM")
-            l = self._parse_unit(laenge); b = self._parse_unit(breite); h = self._parse_unit(hoehe)
-            px_mm = self._parse_unit(px); py_mm = self._parse_unit(py); pz_mm = self._parse_unit(pz)
+            l = self._parse_unit(laenge)
+            b = self._parse_unit(breite)
+            h = self._parse_unit(hoehe)
+            px_mm = self._parse_unit(px)
+            py_mm = self._parse_unit(py)
+            pz_mm = self._parse_unit(pz)
             slab = doc.addObject("Part::Box", "SlabBase")
             slab.Length, slab.Width, slab.Height = l, b, h
-            slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm)
+            if richtung == "-z":
+                slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm - h)
+                tool_z = pz_mm - h - 5.0
+            else:
+                slab.Placement.Base = App.Vector(px_mm, py_mm, pz_mm)
+                tool_z = pz_mm - 5.0
             current = slab
             for i, o in enumerate(oeffnungen):
-                ox = o["x"] * 1000.0; oy = o["y"] * 1000.0
-                ow = o["w"] * 1000.0; oh = o["h"] * 1000.0
+                ox = o["x"] * 1000.0
+                oy = o["y"] * 1000.0
+                ow = o["w"] * 1000.0
+                oh = o["h"] * 1000.0
                 tool = doc.addObject("Part::Box", f"OpeningTool_{i}")
                 tool.Length, tool.Width, tool.Height = ow, oh, h + 10.0
-                tool.Placement.Base = App.Vector(px_mm + ox, py_mm + oy, pz_mm - 5.0)
+                tool.Placement.Base = App.Vector(px_mm + ox, py_mm + oy, tool_z)
                 cut = doc.addObject("Part::Cut", f"SlabCut_{i}")
                 cut.Base, cut.Tool = current, tool
-                if hasattr(current, "ViewObject"): current.ViewObject.Visibility = False
-                if hasattr(tool, "ViewObject"): tool.ViewObject.Visibility = False
+                if hasattr(current, "ViewObject") and current.ViewObject:
+                    current.ViewObject.Visibility = False
+                if hasattr(tool, "ViewObject") and tool.ViewObject:
+                    tool.ViewObject.Visibility = False
                 current = cut
             current.Label = name
             doc.recompute()
-            return f"Decke mit {len(oeffnungen)} Öffnungen: {current.Label}"
-        except Exception as e: return f"Fehler: {str(e)}"
+            return (
+                f"Decke mit {len(oeffnungen)} Öffnungen: {current.Label} | "
+                f"{self._gate_info(current)}"
+            )
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def waende_in_container_ausrichten(self, container_name, ref_aussen="outside"):
         try:
             doc = App.ActiveDocument
             cont = self._get_obj(container_name)
-            if not cont: return "Container nicht gefunden."
+            if not cont:
+                return "Container nicht gefunden."
             aligned = 0
             for obj in doc.Objects:
-                if not (hasattr(obj, "IfcType") and obj.IfcType == "Wall"): continue
-                if cont not in obj.InList: continue
-                if not hasattr(obj, "Base") or not obj.Base: continue
+                if not (hasattr(obj, "IfcType") and obj.IfcType == "Wall"):
+                    continue
+                if cont not in obj.InList:
+                    continue
+                if not hasattr(obj, "Base") or not obj.Base:
+                    continue
                 vs = obj.Base.Shape.Vertexes
-                if len(vs) < 2: continue
+                if len(vs) < 2:
+                    continue
                 w_dir = (vs[-1].Point - vs[0].Point).normalize()
                 is_east = abs(w_dir.x) > abs(w_dir.y)
                 if ref_aussen == "outside":
@@ -1665,54 +2415,138 @@ class RobustFreeCADBridge:
                 aligned += 1
             doc.recompute()
             return f"{aligned} Wände ausgerichtet in '{container_name}'"
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def modell_validieren(self):
         try:
             doc = App.ActiveDocument
-            if not doc: return "Kein Dokument."
+            if not doc:
+                return "Kein Dokument."
             lines = []
             objs = doc.Objects
-            invalid = [o.Label for o in objs if hasattr(o, "State") and "Invalid" in str(o.State)]
-            touched = [o.Label for o in objs if hasattr(o, "State") and "Touched" in str(o.State)]
+            invalid = [
+                o.Label
+                for o in objs
+                if hasattr(o, "State") and "Invalid" in str(o.State)
+            ]
+            touched = [
+                o.Label
+                for o in objs
+                if hasattr(o, "State") and "Touched" in str(o.State)
+            ]
             no_container = []
             for o in objs:
                 has_parent = any(hasattr(p, "Group") and o in p.Group for p in objs)
-                if not has_parent: no_container.append(o.Label)
+                if not has_parent:
+                    no_container.append(o.Label)
             bad_bbox = []
             for o in objs:
-                if not hasattr(o, "Shape") or not o.Shape: continue
+                if not hasattr(o, "Shape") or not o.Shape:
+                    continue
                 try:
                     bb = o.Shape.BoundBox
-                    if any(v is None for v in [bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax]):
-                        bad_bbox.append(f"{o.Label} ({o.Name}): BBox=({bb.XMin},{bb.YMin},{bb.ZMin})-({bb.XMax},{bb.YMax},{bb.ZMax})")
-                    elif bb.XMin == bb.XMax and bb.YMin == bb.YMax and bb.ZMin == bb.ZMax:
-                        bad_bbox.append(f"{o.Label} ({o.Name}): Null-BBox ({bb.XMin},{bb.YMin},{bb.ZMin})")
+                    if any(
+                        v is None
+                        for v in [bb.XMin, bb.YMin, bb.ZMin, bb.XMax, bb.YMax, bb.ZMax]
+                    ):
+                        bad_bbox.append(
+                            f"{o.Label} ({o.Name}): BBox=({bb.XMin},{bb.YMin},{bb.ZMin})-({bb.XMax},{bb.YMax},{bb.ZMax})"
+                        )
+                    elif (
+                        bb.XMin == bb.XMax and bb.YMin == bb.YMax and bb.ZMin == bb.ZMax
+                    ):
+                        bad_bbox.append(
+                            f"{o.Label} ({o.Name}): Null-BBox ({bb.XMin},{bb.YMin},{bb.ZMin})"
+                        )
                 except:
                     bad_bbox.append(f"{o.Label} ({o.Name}): BBox-Fehler")
-            if invalid: lines.append(f"INVALID ({len(invalid)}): {', '.join(invalid)}")
-            if touched: lines.append(f"TOUCHED ({len(touched)}): {', '.join(touched)}")
-            if no_container: lines.append(f"Ohne Container ({len(no_container)}): {', '.join(no_container)}")
-            if bad_bbox: lines.append(f"Ungültige BBox ({len(bad_bbox)}):\n  " + "\n  ".join(bad_bbox))
+            if invalid:
+                lines.append(f"INVALID ({len(invalid)}): {', '.join(invalid)}")
+            if touched:
+                lines.append(f"TOUCHED ({len(touched)}): {', '.join(touched)}")
+            if no_container:
+                lines.append(
+                    f"Ohne Container ({len(no_container)}): {', '.join(no_container)}"
+                )
+            if bad_bbox:
+                lines.append(
+                    f"Ungültige BBox ({len(bad_bbox)}):\n  " + "\n  ".join(bad_bbox)
+                )
             overlaps = []
             for i, a in enumerate(objs):
-                if not hasattr(a, "Shape") or not a.Shape: continue
+                if not hasattr(a, "Shape") or not a.Shape:
+                    continue
                 for j, b in enumerate(objs):
-                    if j <= i: continue
-                    if not hasattr(b, "Shape") or not b.Shape: continue
+                    if j <= i:
+                        continue
+                    if not hasattr(b, "Shape") or not b.Shape:
+                        continue
                     try:
                         if a.Shape.BoundBox.intersect(b.Shape.BoundBox):
                             overlaps.append(f"{a.Label} ∩ {b.Label}")
-                    except: pass
+                    except:
+                        pass
             if overlaps:
-                lines.append(f"Überlappungen ({len(overlaps)}):\n  " + "\n  ".join(overlaps[:10]))
+                lines.append(
+                    f"Überlappungen ({len(overlaps)}):\n  " + "\n  ".join(overlaps[:10])
+                )
             return "\n".join(lines) if lines else "OK — keine Probleme gefunden."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
+
+    def rekalkuliere(self, obj_name=None):
+        try:
+            doc = App.ActiveDocument
+            if not doc:
+                return "Fehler: Kein aktives Dokument."
+            if obj_name:
+                ziel = self._get_obj(obj_name)
+                if not ziel:
+                    return f"Fehler: '{obj_name}' nicht gefunden."
+                ziel.recompute()
+            try:
+                anzahl = doc.recompute()
+            except Exception:
+                doc.recompute()
+                anzahl = None
+            lines = []
+            if anzahl:
+                lines.append(f"{anzahl} Objekt(e) neu berechnet.")
+            touched = [
+                o.Label
+                for o in doc.Objects
+                if hasattr(o, "State") and "Touched" in str(o.State)
+            ]
+            invalid = [
+                o
+                for o in doc.Objects
+                if hasattr(o, "State") and "Invalid" in str(o.State)
+            ]
+            if touched:
+                lines.append(f"TOUCHED ({len(touched)}): {', '.join(touched)}")
+            if invalid:
+                details = []
+                for o in invalid:
+                    kids = [
+                        c.Label
+                        for c in getattr(o, "Group", [])
+                        if hasattr(c, "State") and "Invalid" in str(c.State)
+                    ]
+                    details.append(
+                        f"{o.Label} ({o.TypeId})"
+                        + (f" — betroffene Kinder: {', '.join(kids)}" if kids else "")
+                    )
+                lines.append(f"INVALID ({len(invalid)}): " + "; ".join(details))
+            return "\n".join(lines) if lines else "OK: keine offenen Flags."
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     def validiere_ifc_export(self):
         try:
             doc = App.ActiveDocument
-            if not doc: return "Kein Dokument."
+            if not doc:
+                return "Kein Dokument."
             warnings = []
             for o in doc.Objects:
                 issues = []
@@ -1720,19 +2554,24 @@ class RobustFreeCADBridge:
                     issues.append("kein IFC-Typ")
                 if not hasattr(o, "Material") or not o.Material:
                     issues.append("kein Material")
-                in_container = any(hasattr(p, "Group") and o in p.Group for p in doc.Objects)
+                in_container = any(
+                    hasattr(p, "Group") and o in p.Group for p in doc.Objects
+                )
                 if not in_container:
                     issues.append("nicht in Container")
                 if issues:
                     warnings.append(f"  {o.Label} ({o.Name}): {', '.join(issues)}")
-            if warnings: return "IFC-Warnungen:\n" + "\n".join(warnings)
+            if warnings:
+                return "IFC-Warnungen:\n" + "\n".join(warnings)
             return "IFC-Export bereit."
-        except Exception as e: return f"Fehler: {str(e)}"
+        except Exception as e:
+            return f"Fehler: {str(e)}"
 
     # --- Space / Raum ---
     def erstelle_raum(self, base_object=None, name="Raum"):
         try:
             import Arch
+
             doc = App.ActiveDocument or App.newDocument("BIM")
             if base_object:
                 base = self._get_obj(base_object)
@@ -1751,12 +2590,13 @@ class RobustFreeCADBridge:
         if sub_elements:
             return [(obj, s) for s in sub_elements]
         if hasattr(obj, "Shape") and obj.Shape and hasattr(obj.Shape, "Faces"):
-            return [(obj, f"Face{i+1}") for i in range(len(obj.Shape.Faces))]
+            return [(obj, f"Face{i + 1}") for i in range(len(obj.Shape.Faces))]
         return []
 
     def raum_grenze_hinzufuegen(self, space_name, object_name, sub_elements=None):
         try:
             import Arch
+
             space = self._get_obj(space_name)
             obj = self._get_obj(object_name)
             if not space or not obj:
@@ -1773,6 +2613,7 @@ class RobustFreeCADBridge:
     def raum_grenze_entfernen(self, space_name, object_name, sub_elements=None):
         try:
             import Arch
+
             space = self._get_obj(space_name)
             obj = self._get_obj(object_name)
             if not space or not obj:
@@ -1787,19 +2628,33 @@ class RobustFreeCADBridge:
             return f"Fehler: {str(e)}"
 
     def run_python(self, script):
-        if not getattr(self, '_execute_python_erlaubt', False):
-            return "Fehler: execute_python ist deaktiviert. FreeCAD neustarten und beim Bridge-Start aktivieren."
+        if not getattr(self, "_execute_python_erlaubt", False):
+            return (
+                "Fehler: execute_python ist deaktiviert. "
+                "Beim Bridge-Start (start_bridge in der FreeCAD-Konsole) erscheint "
+                "ein Sicherheitsdialog — dort mit 'Ja' bestätigen. "
+                "Nachträgliches Aktivieren erfordert einen FreeCAD-Neustart mit "
+                "erneutem Bridge-Start."
+            )
         try:
             import FreeCADGui as Gui
             import io, sys, traceback
-            restricted_globals = {"App": App, "Part": Part, "Gui": Gui, "FreeCAD": App, "time": time}
+
+            restricted_globals = {
+                "App": App,
+                "Part": Part,
+                "Gui": Gui,
+                "FreeCAD": App,
+                "time": time,
+            }
             self._audit("EXECUTE_PYTHON", f"Skript ({len(script)} Z.): {script[:200]}")
             stdout_capture = io.StringIO()
             old_stdout = sys.stdout
             sys.stdout = stdout_capture
             try:
                 exec(script, restricted_globals)
-                if App.ActiveDocument: App.ActiveDocument.recompute()
+                if App.ActiveDocument:
+                    App.ActiveDocument.recompute()
             finally:
                 sys.stdout = old_stdout
             output = stdout_capture.getvalue()
@@ -1808,13 +2663,16 @@ class RobustFreeCADBridge:
             tb = traceback.format_exc()
             return f"Fehler: {str(e)}\n{tb}"
 
+
 # Globale Referenzen für Hot-Reload
 _server_instance = None
 _bridge_instance = None
 
+
 def check_port(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex((HOST, port)) != 0
+
 
 def start_bridge():
     global _timer_obj, _server_instance, _bridge_instance
@@ -1828,7 +2686,9 @@ def start_bridge():
         except Exception as e:
             print(f"Hot-Reload fehlgeschlagen: {e}")
             return
-    server = xmlrpc.server.SimpleXMLRPCServer((HOST, PORT), allow_none=True, logRequests=False)
+    server = xmlrpc.server.SimpleXMLRPCServer(
+        (HOST, PORT), allow_none=True, logRequests=False
+    )
     bridge = RobustFreeCADBridge()
     # Sicherheitsabfrage für execute_python (RCE)
     bridge._execute_python_erlaubt = False
@@ -1851,8 +2711,8 @@ def start_bridge():
         msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
         msg.setDefaultButton(QMessageBox.No)
         msg.setIcon(QMessageBox.Warning)
-        dialog_exec = getattr(msg, 'exec', getattr(msg, 'exec_', None))
-        bridge._execute_python_erlaubt = (dialog_exec() == QMessageBox.Yes)
+        dialog_exec = getattr(msg, "exec", getattr(msg, "exec_", None))
+        bridge._execute_python_erlaubt = dialog_exec() == QMessageBox.Yes
     else:
         try:
             antwort = input("execute_python (RCE) aktivieren? (y/N): ")
@@ -1865,32 +2725,39 @@ def start_bridge():
     _server_instance = server
     _bridge_instance = bridge
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    
+
     # Timer-Setup für Snap / Modern FreeCAD
     try:
         import FreeCADGui
+
         if hasattr(FreeCADGui, "addTimer"):
             FreeCADGui.addTimer(50, process_requests)
             print("--- Bridge AKTIV (via FreeCADGui.addTimer) ---")
             return
-    except: pass
+    except:
+        pass
     try:
         from PySide6 import QtCore
+
         _timer_obj = QtCore.QTimer()
         _timer_obj.timeout.connect(process_requests)
         _timer_obj.start(50)
         print("--- Bridge AKTIV (via PySide6.QTimer) ---")
         return
-    except: pass
+    except:
+        pass
     try:
         from PySide2 import QtCore
+
         _timer_obj = QtCore.QTimer()
         _timer_obj.timeout.connect(process_requests)
         _timer_obj.start(50)
         print("--- Bridge AKTIV (via PySide2.QTimer) ---")
         return
-    except: pass
+    except:
+        pass
     print("FEHLER: Kein Timer gefunden.")
+
 
 if __name__ == "__main__":
     start_bridge()

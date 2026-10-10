@@ -1,25 +1,55 @@
-*Read this in other languages: [English](README.md), [Deutsch](README.de.md).*
+<div align="center">
 
-# **freecad-bim-agent** — FreeCAD MCP Server
+# 🏛️ freecad-bim-agent
 
-This repository contains a **Model Context Protocol (MCP)** server that provides a seamless bridge between AI models (LLMs) and **FreeCAD**. Built on the FastMCP framework, it enables AI assistants to generate, modify, analyze, and visually verify complex 3D models, parametric parts, and complete **BIM (Building Information Modeling)** structures directly in FreeCAD.  
-The MCP server is specifically designed to integrate natively with **coding agents**, enabling autonomous AI-driven CAD and BIM workflows. It has been successfully tested with [**OpenCode**](https://opencode.ai/).  
-Communication with FreeCAD happens via an XML-RPC interface (FreeCAD Bridge) that interprets commands and executes them directly in the FreeCAD Python runtime.
+### **The Intelligent Bridge Between AI Agents & FreeCAD**
 
-## **System Architecture**
+*Empowering AI Coding Agents to Design, Parametrize, and Analyze 3D BIM Models Directly in FreeCAD.*
 
-The server acts as a translator between the standardized MCP protocol and the FreeCAD API:
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![MCP Protocol](https://img.shields.io/badge/Protocol-MCP-orange.svg)](https://modelcontextprotocol.io/)
+[![FreeCAD](https://img.shields.io/badge/FreeCAD-1.0%2B-red.svg)](https://www.freecad.org/)
+[![Tested with OpenCode](https://img.shields.io/badge/Tested%20With-OpenCode-purple.svg)](https://opencode.ai/)
+
+---
+
+[English](README.md) • [Deutsch](README.de.md) • [Documentation](#-api--tool-reference) • [Report Bug](https://github.com/your-repo/freecad-bim-agent/issues)
+
+</div>
+
+<br />
+
+## 🌟 Overview
+
+**freecad-bim-agent** is a powerful **Model Context Protocol (MCP)** server built on the FastMCP framework. It acts as an autonomous interface between AI Language Models / Coding Agents (like [OpenCode](https://opencode.ai/)) and **FreeCAD**.
+
+By bridging high-level LLM commands with FreeCAD’s internal Python API via an XML-RPC bridge, this server enables AI agents to **generate, edit, inspect, and visually verify complex 3D parametric geometry and IFC-compliant BIM structures** in real-time.
+
+---
+
+## 🏗️ System Architecture
+
+The architecture connects standardized AI agent calls down to the native FreeCAD Python runtime:
 
 ```mermaid
 graph TD;
-    Agent[Coding-Agent <br> e.g. OpenCode];
-    Server[mcp_server.py <br> FastMCP Server];
-    Bridge[FreeCAD-Bridge <br> XML-RPC Server];
-    FC[FreeCAD Core <br> Python Runtime];
+    subgraph AI Environment
+        Agent[🤖 Coding Agent <br> <i>e.g. OpenCode</i>];
+    end
+
+    subgraph MCP Gateway
+        Server[⚙️️ mcp_server.py <br> <i>FastMCP Server</i>];
+    end
+
+    subgraph FreeCAD Host
+        Bridge[🔌 FreeCAD Bridge <br> <i>XML-RPC Server :8000</i>];
+        FC[🧱 FreeCAD Core <br> <i>Python Runtime</i>];
+    end
 
     Agent -- "MCP JSON-RPC" --> Server;
     Server -- "High-Level Tools <br> (e.g. create_wall)" --> Bridge;
-    Bridge -- "XML-RPC <br> (localhost:8000)" --> FC;
+    Bridge -- "XML-RPC Exec" --> FC;
 
     style Agent fill:#1f77b4,stroke:#115588,stroke-width:2px,color:#fff;
     style Server fill:#2ca02c,stroke:#1e6b1e,stroke-width:2px,color:#fff;
@@ -27,49 +57,55 @@ graph TD;
     style FC fill:#d62728,stroke:#991b1b,stroke-width:2px,color:#fff;
 ```
 
-## **Features & Capabilities**
+---
 
-* **Optimized for Coding Agents:** Tailored tool structures for autonomous agents like OpenCode for AI-assisted design.  
-* **Parametric CSG Modeling:** Create primitives (cubes, cylinders, spheres) with native unit support (mm, cm, m).  
-* **Advanced BIM/Architecture Tools:** Structured creation of IFC-compliant entities like Sites, Buildings, Floors, Walls, Slabs, Roofs, and Stairs.  
-* **Automated Wall & Window Placement:** Intelligent wall alignment (inside/outside edge) and precise cut-in placement of windows and doors.  
-* **Space/Volume creation:** IFC-compliant rooms based on solids or boundary faces via `create_space` and `add_space_boundary`.  
-* **Draft & 2D Drawing Tools:** Create lines, polylines, circles, text, and dimensions in 3D space.  
-* **Model Validation & Quality Control:** Preflight checks for invalid geometry, bounding-box overlaps, and IFC compliance before export.  
-* **Visual Feedback:** Render and return 3D views as Base64/PNG images to the AI model for visual verification.  
-* **The Ultimate Escape Hatch (execute\_python):** Enables the AI to run arbitrary Python code directly inside FreeCAD to fill gaps for highly specific operations.
+## ✨ Key Features
 
-## **⚠️ IMPORTANT SECURITY NOTICE (execute\_python)**
+- 🤖 **Agent-First Design:** Optimized schemas and return types tailored for autonomous agents (e.g., OpenCode).
+- 📐 **Parametric CSG:** Create cubes, cylinders, and spheres with native unit handling (`mm`, `cm`, `m`).
+- 🏢 **Advanced BIM Tools:** Full IFC-compliant structures (Sites, Buildings, Floors, Walls, Slabs, Roofs, Stairs).
+- 🚪 **Smart Openings & Placement:** Wall alignment (inside/outside edge) and automated window/door cutout generation.
+- 📐 **Draft & 2D Documentation:** Lines, polylines, dimensions, circles, and text in 3D space.
+- 👁️ **Visual Feedback:** Captures 3D viewport screenshots (Base64/PNG) so the AI agent can visually inspect its work.
+- 🔍 **Validation & Quality Control:** Automated preflight checks for geometric errors, overlapping bounding boxes, and missing IFC data.
+- ⚡ **Batch Operations:** Tools like `add_to_container_batch` reduce tool-call overhead significantly.
+- 🔓 **Python Fallback (`execute_python`):** Ultimate escape hatch allowing agents to execute direct FreeCAD Python code when needed.
 
-The `execute_python` tool is extremely powerful and serves as a fallback for operations not covered by specialized tools. **Executing arbitrary Python code poses significant security risks** (e.g., unauthorized file access, system commands, or malicious code execution if the LLM behaves unpredictably).
+---
 
-* **Security Risk:** `execute_python` runs agent-generated code with the full privileges of the local user running FreeCAD.  
-* **Bridge-Start Prompt:** When loading the bridge, a Qt dialog (or console prompt) explicitly asks for permission. Without confirmation, `run_python` blocks with an error message. Reactivation requires a FreeCAD restart.
+## ⚠️ Important Security Notice (`execute_python`)
 
-## **Installation & Setup**
+> [!WARNING]  
+> The `execute_python` tool gives the agent the ability to execute arbitrary Python code with full privileges of the user running FreeCAD.
 
-### **1\. Prerequisites**
+- **Potential Risks:** Unauthorized file system access, external network calls, or unexpected actions if the model behaves unpredictably.
+- **Safety Interlock:** When initializing the bridge, a **Qt confirmation dialog** (or console prompt) will ask for explicit permission. If declined, `run_python` execution is disabled until FreeCAD is restarted.
 
-* Python 3.10 or higher  
-* A running FreeCAD instance with the **FreeCAD Bridge** active (XML-RPC server on port 8000).  
-* A compatible MCP agent (tested with **OpenCode**).
+---
 
-### **2\. Install Dependencies**
+## 🚀 Quick Start
 
-Install the required Python packages via pip:
+### 1. Prerequisites
 
-Bash  
+- **Python:** 3.10 or higher
+- **FreeCAD:** Active instance running the **FreeCAD Bridge** (XML-RPC server listening on `localhost:8000`).
+- **MCP Client:** An agent supporting MCP (e.g., [OpenCode](https://opencode.ai/)).
+
+### 2. Installation
+
+Clone the repository and install dependencies:
+
+```bash
+git clone https://github.com/your-username/freecad-bim-agent.git
+cd freecad-bim-agent
 pip install mcp python-dotenv
+```
 
-### **3\. Environment Variables (.env)**
+### 3. Agent Configuration
 
-Create a `.env` file in the root directory if you need to customize default settings (loaded via `load_dotenv()`).
+Add the server to your agent's MCP setup file (e.g., `opencode.json`):
 
-### **4\. Connect the Server to OpenCode / Coding Agents**
-
-Add the server to your agent's MCP configuration file:
-
-```JSON  
+```json
 {
   "mcp": {
     "FreeCAD": {
@@ -84,134 +120,167 @@ Add the server to your agent's MCP configuration file:
 }
 ```
 
-## **API & Tool Reference**
+---
 
-The server registers a wide range of tools. Below is a structured overview of all available MCP tools, organized by category:
+## 🛠️ API & Tool Reference
 
-### **1\. Basic Construction & Transformations (CSG)**
+<details>
+<summary><b>1. Basic Construction & Transformations (CSG)</b></summary>
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| create\_cube | length, width, height (strings with units) | Creates a parametric box. |
-| create\_cylinder | radius, height (strings with units) | Creates a cylinder. |
-| create\_sphere | radius (string with units) | Creates a sphere. |
-| set\_position | name (Str), x, y, z (Floats) | Moves an object to absolute coordinates (in meters). |
-| rotate\_object | name (Str), axis (X/Y/Z), angle (Float) | Rotates an object around the specified axis (degrees). |
-| clone\_object | source\_name, new\_name | Creates a parametric Draft Clone. |
-| mirror\_object | source\_name, axis, origin\_x/y/z, new\_name | Mirrors an object across a defined axis plane. |
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `create_cube` | `length`, `width`, `height` | Creates a parametric box (supports unit strings). |
+| `create_cylinder` | `radius`, `height` | Creates a cylinder. |
+| `create_sphere` | `radius` | Creates a sphere. |
+| `set_position` | `name`, `x`, `y`, `z` | Sets absolute 3D position (meters). |
+| `move_by` | `name`, `dx`, `dy`, `dz` | Relocates an object relatively by offset (meters). |
+| `rotate_object` | `name`, `axis`, `angle` | Rotates an object around X/Y/Z axis (degrees). |
+| `clone_object` | `source_name`, `new_name` | Creates a parametric Draft Clone. |
+| `mirror_object` | `source_name`, `axis`, `origin_x/y/z`, `new_name` | Mirrors an object across a defined axis plane. |
 
-### **2\. Boolean Operations & Modifiers**
+</details>
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| boolean\_union | obj\_a, obj\_b | Fuses two objects. |
-| boolean\_cut | base\_obj, tool\_obj | Subtracts tool\_obj from base\_obj (e.g., for cutouts). |
-| boolean\_cut\_finalize | cut\_result, new\_label, container, hide\_sources | Finalizes a cut: renames the result, hides source objects, sorts into a floor. |
-| fillet | object\_name, radius, edge\_indices | Fillets edges of an object. |
-| chamfer | object\_name, length, edge\_indices | Chamfers edges of an object. |
+<details>
+<summary><b>2. Boolean Operations & Modifiers</b></summary>
 
-### **3\. BIM & Architecture (Arch/BIM Workbench)**
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `boolean_union` | `obj_a`, `obj_b` | Fuses two objects together. |
+| `boolean_cut` | `base_obj`, `tool_obj` | Subtracts `tool_obj` from `base_obj`. |
+| `boolean_cut_finalize` | `cut_result`, `new_label`, `container`, `hide_sources` | Finalizes cut, renames, hides source objects, and moves to floor. |
+| `fillet` | `object_name`, `radius`, `edge_indices` | Applies fillet rounding to selected edges. |
+| `chamfer` | `object_name`, `length`, `edge_indices` | Applies chamfer beveling to selected edges. |
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| create\_site | name | Creates a project site (Arch Site). |
-| create\_building | name | Creates a building structure (Arch Building). |
-| create\_floor | name | Creates a floor / storey (Arch Floor). |
-| add\_to\_container | object\_name, container\_name | Assigns an object hierarchically (e.g., wall into floor). |
-| add\_to\_container\_batch | object\_names (List\[Str\]), container\_name | Assigns multiple objects to a container at once. |
-| create\_slab | length, width, height, name, placement\_x/y/z | Creates a floor or ceiling slab. |
-| create\_slab\_with\_openings | *Same as Slab*, + openings (List\[Dict\]) | Creates a slab with predefined openings. |
-| create\_wall | p1 \[X,Y,Z\], p2 \[X,Y,Z\], width, height, name | Creates a straight wall between two 3D points (in METERS). |
-| join\_walls | walls (List\[Str\]) | Joins multiple walls into a single object. |
-| add\_to\_wall | wall\_name, component\_name | Inserts a window/door into a wall (Host relationship). |
-| align\_wall | wall\_name, align, align\_to | Aligns the wall relative to its baseline (Left, Center, Right, inside, outside). |
-| align\_walls\_in\_container | container, ref\_at ("outside"/"inside") | Automatically aligns all walls in a floor by cardinal direction. |
-| set\_wall\_alignment | wall, ref\_at\_outside (Bool) | Moves the reference line to the outer edge and adjusts alignment. |
-| create\_window | wall\_ident, distance\_from\_start, width, height, sill\_height, windowtype, name | Inserts a window/door into a wall. Automatically cuts the wall opening. |
-| create\_window\_sketch | wall\_ident, width, height, sill\_height, name | Creates a custom window based on a sketch. |
-| create\_roof | basewire (List\[List\[float\]\]), overhang, thickness, angle, name | Generates a roof from a closed polygon outline. |
-| create\_stairs | height, width, landing (bool), name | Creates a parametric staircase (Arch Stairs). Steps auto-calculated via 2h+b=630mm. Optional U-turn landing. |
-| create\_opening | base\_object, shape, position \[X,Y,Z\], size \[W,H,D\], name | Creates a cutout in a building element via Boolean Cut. |
-| copy\_to\_floor | source\_walls (List\[Str\]), target\_floor, z\_offset, x\_extension | Copies walls to another floor with height offset. |
-| create\_attika | roof\_slab, height, thickness, offset, name\_prefix | Automatically generates parapet walls along a roof slab perimeter. |
-| create\_space | base\_object (opt.), name | Creates a room (Arch Space) from a solid or as empty volume. |
-| add\_space\_boundary | space\_name, object\_name, faces (opt.) | Adds boundary faces to a space. |
-| remove\_space\_boundary | space\_name, object\_name, faces (opt.) | Removes boundary faces from a space. |
+</details>
 
-### **4\. Axes & Section Planes**
+<details>
+<summary><b>3. BIM & Architecture (Arch/BIM Workbench)</b></summary>
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| create\_axis | count, spacing, length, for\_building, building\_pad, x, y, z, rotation, numbering\_style, bubble\_size, font\_size, line\_width, bubble\_position, show\_labels, font\_name, name | Creates parallel building axes (Arch Axis) with full View-Property access. Auto-length via building BBox when for\_building is set. |
-| create\_axes | axes (List\[Dict\]) | Batch creation — each dict supports all create\_axis parameters. |
-| create\_axis\_system | axes (List\[Str\]), name | Groups multiple axes into an orthogonal axis system. |
-| create\_section\_plane | x, y, z, direction, name | Creates a section plane for floor plans and views. |
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `create_site` | `name` | Creates an Arch Site container. |
+| `create_building` | `name` | Creates an Arch Building container. |
+| `create_floor` | `name` | Creates an Arch Floor / Storey structure. |
+| `add_to_container` | `object_name`, `container_name` | Hierarchically links an object to a container. |
+| `add_to_container_batch` | `object_names`, `container_name` | Links multiple objects to a container simultaneously. |
+| `create_slab` | `length`, `width`, `height`, `name`, `placement_x/y/z`, `direction` | Creates floor/ceiling slab (`direction="-z"` or `"+z"`). |
+| `create_slab_with_openings` | *Slab params* + `openings`, `direction` | Generates slab with predefined cutouts. |
+| `create_wall` | `p1`, `p2`, `width`, `height`, `name`, `align`, `align_to` | Generates a straight wall between 3D points. |
+| `join_walls` | `walls` | Merges multiple wall segments into one object. |
+| `add_to_wall` | `wall_name`, `component_name` | Hosts windows or doors in a target wall. |
+| `align_wall` | `wall_name`, `align`, `align_to` | Adjusts wall alignment relative to baseline. |
+| `align_walls_in_container` | `container`, `ref_at` | Auto-aligns all floor walls by cardinal direction. |
+| `set_wall_alignment` | `wall`, `ref_at_outside` | Adjusts alignment and shifts reference line. |
+| `create_window` | `wall_ident`, `distance_from_start`, `width`, `height`, `sill_height`, `windowtype`, `name` | Inserts parametric window/door into a wall with opening cut out. |
+| `create_window_sketch` | `wall_ident`, `width`, `height`, `sill_height`, `name` | Inserts custom window based on a 2D sketch. |
+| `create_roof` | `basewire`, `overhang`, `thickness`, `angle`, `name` | Builds roof from closed wire polygon. |
+| `create_stairs` | `height`, `width`, `landing`, `name` | Generates parametric staircase (Arch Stairs). |
+| `create_opening` | `base_object`, `shape`, `position`, `size`, `name` | Cuts arbitrary shape out of building element. |
+| `copy_to_floor` | `source_walls`, `target_floor`, `z_offset`, `x_extension` | Duplicates wall structures to higher floor levels. |
+| `create_attika` | `roof_slab`, `height`, `thickness`, `offset`, `name_prefix` | Generates parapet walls along roof edge perimeter. |
+| `create_space` | `base_object`, `name` | Creates an IFC room space from solid or boundary. |
+| `add_space_boundary` | `space_name`, `object_name`, `faces` | Links boundary faces to an Arch Space. |
+| `remove_space_boundary` | `space_name`, `object_name`, `faces` | Removes boundary faces from an Arch Space. |
 
-### **5\. MEP & Special Structures**
+</details>
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| create\_structure | length, width, height, name, position\_x/y/z (opt.) | Creates structural elements like beams or columns. Optional position in meters. |
-| create\_profiled\_structure | profile\_name, height, name, category (opt.), position\_x/y/z (opt.) | Creates a structural element with a predefined steel profile (IPE, HEA, HEB, CHS, UPE, etc.). Supports profile classes: C, H, R, RH, U, L, T, TSLOT. Optional `category` for disambiguation. Uses FreeCAD's system profiles.csv by default; falls back to a local profiles\_copy.csv next to freecad\_bridge.py, in the document directory, or in the current working directory. |
-| create\_panel | length, width, thickness, name | Creates an Arch Panel. |
-| create\_curtain\_wall | basewire, panel\_width, panel\_height, name | Creates a glass curtain wall along a path. |
-| create\_pipe | basewire, outer\_diameter, wall\_thickness, name | Creates a pipe system along a 3D path. |
-| create\_duct | basewire, width, height, name | Creates a rectangular duct via Sweep operation. |
+<details>
+<summary><b>4. Axes & Section Planes</b></summary>
 
-### **6\. Draft (2D Drawing & Documentation)**
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `create_axis` | *Spacing, count, visual options* | Generates parametric building grid axis. |
+| `create_axes` | `axes` (List of dicts) | Batch creates multiple grid axes. |
+| `create_axis_system` | `axes`, `name` | Combines orthogonal grid axes into an Axis System. |
+| `create_section_plane` | `x`, `y`, `z`, `direction`, `name` | Generates 2D architectural section plane. |
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| create\_point | x, y, z, name | Creates a reference point. |
-| create\_line | p1, p2, name (Strings) | Creates a Draft line (supports unit strings). |
-| move\_line | line, start \[X,Y,Z\], end \[X,Y,Z\] | Moves a line's start and end points. |
-| create\_polyline | points (List), closed (Bool), name | Creates an open or closed wire. |
-| create\_rectangle | length, width, placement\_x/y/z | Creates a flat rectangle. |
-| create\_circle | radius, placement\_x/y/z | Creates a Draft circle. |
-| create\_arc | center\_x/y/z, radius, start\_angle, end\_angle | Creates a circular arc. |
-| create\_text | text, x, y, z, font\_size, name | Places text in 3D space. |
-| create\_dimension | p1, p2, p3, name | Creates a 2D/3D dimension between two points. |
+</details>
 
-### **7\. Data, IFC Management & Export**
+<details>
+<summary><b>5. MEP & Structural Engineering</b></summary>
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| set\_ifc\_data | object\_name, properties\_json | Assigns custom IFC properties (Psets) to objects. |
-| set\_material | object\_name, material\_name, color\_rgb | Assigns a material and visualization color (R,G,B). |
-| set\_material\_batch | object\_names (List\[Str\]), material\_name, color\_rgb | Assigns the same material to multiple objects at once. |
-| get\_quantities | object\_name | Calculates area, volume, and mass of an object. |
-| export\_ifc | file\_path | Exports the entire model as a standardized BIM IFC file (fallback via Arch.export). |
-| analyze\_ifc | file\_path | Analyzes an IFC file externally and returns project statistics. |
-| create\_schedule | object\_type, properties, name | Creates an automated parts list (Arch Schedule). |
-| create\_2d\_view | source\_name, direction, name | Generates a TechDraw 2D projection (floor plan / section). |
-| export\_dxf / import\_dxf | file\_path | Exports/imports CAD data in DXF format. |
-| export\_pdf / export\_svg | file\_path | Exports TechDraw sheets as vector graphics or PDF. |
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `create_structure` | `length`, `width`, `height`, `name`, `position_x/y/z` | Creates beam or column structural element. |
+| `create_profiled_structure` | `profile_name`, `height`, `name`, `category`, `position_x/y/z` | Structural member using steel profile (IPE, HEA, HEB, CHS, UPE, etc.). |
+| `create_panel` | `length`, `width`, `thickness`, `name` | Creates an Arch Panel element. |
+| `create_curtain_wall` | `basewire`, `panel_width`, `panel_height`, `name` | Generates a glazed curtain wall along a baseline. |
+| `create_pipe` | `basewire`, `outer_diameter`, `wall_thickness`, `name` | Sweeps a pipe along a 3D path. |
+| `create_duct` | `basewire`, `width`, `height`, `name` | Sweeps rectangular ducting along a path. |
 
-### **8\. Administration, Validation & Diagnostics**
+</details>
 
-| Tool | Arguments | Description |
-| :---- | :---- | :---- |
-| list\_objects | *none* | Returns a list of all objects with Label → Name mapping. |
-| get\_object\_info | object\_name | Returns detailed metadata (Type, BoundingBox, State, Volume, Baseline) of an object. |
-| rename\_object | object, new\_label | Changes the visible label of an object. |
-| set\_visibility | object, visible (Bool) | Toggles visibility in the 3D viewport. |
-| delete\_object | name | Permanently deletes an object from the document. |
-| boolean\_cut\_finalize | cut\_result, new\_label, container, hide\_sources | Finalizes a cut: renames, hides sources, sorts into container. |
-| capture\_view | view\_type ("iso"/"top"/"front"/"right") | **Returns an mcp.Image (PNG).** Takes a screenshot of the current 3D viewport for visual verification. |
-| validate\_model | *none* | Validates the model for errors (Invalid flags), collisions, invalid bounding boxes, and orphaned objects. |
-| validate\_ifc\_export | *none* | Preflight check for missing IFC data/materials before export. |
-| execute\_python | script (Python-Code) | **Security-critical.** Executes native Python code in the FreeCAD context. Enabled/disabled via Qt dialog at bridge startup. |
+<details>
+<summary><b>6. Draft Tools (2D & Annotations)</b></summary>
 
-## **Code Architecture (mcp\_server.py)**
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `create_point` | `x`, `y`, `z`, `name` | Creates a reference point. |
+| `create_line` | `p1`, `p2`, `name` | Draws line segment in 3D space. |
+| `move_line` | `line`, `start`, `end` | Repositions end points of line. |
+| `create_polyline` | `points`, `closed`, `name` | Draws continuous polyline wire. |
+| `create_rectangle` | `length`, `width`, `placement_x/y/z` | Draws 2D plane rectangle. |
+| `create_circle` | `radius`, `placement_x/y/z` | Draws 2D circle. |
+| `create_arc` | `center_x/y/z`, `radius`, `start_angle`, `end_angle` | Draws circular arc segment. |
+| `create_text` | `text`, `x`, `y`, `z`, `font_size`, `name` | Adds 3D text object. |
+| `create_dimension` | `p1`, `p2`, `p3`, `name` | Adds parametric dimension line between points. |
 
-The code is designed with robust, defensive patterns:
+</details>
 
-1. **FastMCP Instantiation:** The server is declared via `mcp = FastMCP("FreeCAD")`.  
-2. **Fault-Tolerant XML-RPC Communication:** Every tool wraps the bridge call in a try-except block. If FreeCAD throws an error (e.g., geometry instability or missing objects), it is caught and returned as a readable string to the agent. This prevents MCP server crashes and allows the coding agent (e.g., OpenCode) to autonomously apply error corrections.  
-3. **Type-Safe Image Conversion:** The `capture_view` tool receives image data as a Base64 string from the FreeCAD Bridge, decodes it to native bytes, and uses FastMCP's `Image` class to provide the language model with real visual scene understanding for verification. Supports multiple view types (iso, top, front, right).  
-4. **Batch Operations:** Tools like `add_to_container_batch` and `set_material_batch` reduce the number of required tool calls for bulk operations from 30+ down to 2–3 calls.  
-5. **Retry Mechanism:** The bridge dispatch (`_dispatch`) automatically retries failed requests (2 attempts with 45s timeout) to avoid sporadic timeout errors.
+<details>
+<summary><b>7. IFC Data, Materials & Export</b></summary>
 
-## **License**
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `set_ifc_data` | `object_name`, `properties_json` | Attaches custom IFC Property Sets (Psets). |
+| `set_ifc_type` | `object_name`, `ifc_type` | Sets IFC classification with enum validation. |
+| `set_material` | `object_name`, `material_name`, `color_rgb` | Sets material & viewport render color. |
+| `set_material_batch` | `object_names`, `material_name`, `color_rgb` | Applies material to multiple objects simultaneously. |
+| `get_quantities` | `object_name` | Returns volume, surface area, and BBox metrics. |
+| `export_ifc` | `file_path` | Exports entire project scene to standard `.ifc`. |
+| `analyze_ifc` | `file_path` | Analyzes external IFC file and returns statistics. |
+| `create_schedule` | `object_type`, `properties`, `name` | Generates parts quantity list (Arch Schedule). |
+| `create_2d_view` | `source_name`, `direction`, `name` | Generates TechDraw projection drawing. |
+| `export_dxf` / `import_dxf` | `file_path` | Handles DXF import/export. |
+| `export_pdf` / `export_svg` | `file_path` | Exports TechDraw sheets to PDF/SVG. |
 
-This project is licensed under the **MIT License**. See LICENSE for details.
+</details>
+
+<details>
+<summary><b>8. Project Admin, Quality Check & Diagnostics</b></summary>
+
+| Tool | Parameters | Description |
+| :--- | :--- | :--- |
+| `list_objects` | *none* | Lists all active document objects with Label mapping. |
+| `get_object_info` | `object_name` | Retrieves detailed metadata, geometry state & BBox. |
+| `rename_object` | `object`, `new_label` | Renames display label of object. |
+| `set_visibility` | `object`, `visible` | Toggles viewport visibility state. |
+| `delete_object` | `name` | Deletes object from FreeCAD tree. |
+| `capture_view` | `view_type` (`iso`/`top`/`front`/`right`) | **Returns PNG Image.** Screenshots 3D viewport. |
+| `validate_model` | *none* | Audits scene for invalid shapes, orphan objects, and collisions. |
+| `validate_ifc_export` | *none* | Preflight check for missing IFC tags/materials. |
+| `recompute` | `object_name` (optional) | Recalculates document or specific sub-tree. |
+| `save_document` | `path` (optional) | Saves active document to disk (`.FCStd`). |
+| `execute_python` | `script` | Runs custom raw Python inside FreeCAD runtime. |
+
+</details>
+
+---
+
+## 🛠️ Developer & Architecture Notes
+
+- **Fault Tolerance:** Every XML-RPC call is wrapped in exception handlers. When FreeCAD geometry operations fail, errors are formatted into human-readable strings and sent back to the LLM. This keeps the MCP server running and allows the AI agent to recover and correct its mistakes autonomously.
+- **Multimodal Visual Inspection:** The `capture_view` tool fetches rendering bytes from FreeCAD, converts them via `FastMCP.Image`, and returns native image blocks to the LLM to inspect visual results.
+- **Automatic Retries:** Built-in retry mechanisms (`_dispatch`) gracefully handle temporary FreeCAD response delays (2 retries, 45s timeout).
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more information.
+
+---
+
+<div align="center">
+  <sub>Built with ❤️ for AI-assisted CAD & BIM workflows.</sub>
+</div>

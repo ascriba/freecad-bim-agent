@@ -14,9 +14,11 @@ mcp = FastMCP("FreeCAD")
 # Verbindung zur FreeCAD-Bridge
 FREE_CAD_BRIDGE_URL = "http://localhost:8000"
 
+
 def get_bridge():
     """Erstellt eine neue Verbindung zur Bridge."""
     return xmlrpc.client.ServerProxy(FREE_CAD_BRIDGE_URL, allow_none=True)
+
 
 @mcp.tool()
 def create_cube(length: str = "10mm", width: str = "10mm", height: str = "10mm") -> str:
@@ -29,6 +31,7 @@ def create_cube(length: str = "10mm", width: str = "10mm", height: str = "10mm")
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_cylinder(radius: str = "5mm", height: str = "10mm") -> str:
     """
@@ -39,6 +42,7 @@ def create_cylinder(radius: str = "5mm", height: str = "10mm") -> str:
         return bridge.erstelle_zylinder(radius, height)
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def list_objects() -> str:
@@ -52,8 +56,9 @@ def list_objects() -> str:
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def delete_object(name: str) ->str:
+def delete_object(name: str) -> str:
     """Löscht ein Objekt in der aktuellen FreeCAD-Sitzung"""
     try:
         bridge = get_bridge()
@@ -61,16 +66,21 @@ def delete_object(name: str) ->str:
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def set_position(name: str, x: float = 0.0, y: float = 0.0, z: float = 0.0) -> str:
     """
-    Verschiebt ein Objekt in FreeCAD an eine neue Position (X, Y, Z).
-    
+    Setzt die ABSOLUTE Position eines Objekts (Placement.Base) — im Gegensatz zu move_by (relativ).
+
+    Achtung bei abgeleiteten Objekten (Part::Cut, Part::Mirroring) mit absoluter
+    Geometrie: die Form wird relativ zur Placement verschoben; für Korrekturen
+    um einen Offset move_by verwenden.
+
     Args:
         name: Der Name des Objekts (z.B. 'Box', 'Cylinder')
-        x: X-Koordinate
-        y: Y-Koordinate
-        z: Z-Koordinate
+        x: X-Koordinate in METERN
+        y: Y-Koordinate in METERN
+        z: Z-Koordinate in METERN
     """
     try:
         bridge = get_bridge()
@@ -78,11 +88,28 @@ def set_position(name: str, x: float = 0.0, y: float = 0.0, z: float = 0.0) -> s
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
+@mcp.tool()
+def move_by(name: str, dx: float = 0.0, dy: float = 0.0, dz: float = 0.0) -> str:
+    """
+    Verschiebt ein Objekt relativ um einen Offset (im Gegensatz zu set_position, das ABSOLUT setzt).
+
+    Args:
+        name: Name oder Label des Objekts.
+        dx/dy/dz: Offset in METERN (z.B. 0.2 = 200mm).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.verschiebe_objekt(name, dx, dy, dz)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+
 @mcp.tool()
 def rotate_object(name: str, axis: str = "Z", angle: float = 45.0) -> str:
     """
     Dreht ein Objekt in FreeCAD um eine bestimmte Achse (X, Y oder Z).
-    
+
     Args:
         name: Der Name des Objekts
         axis: Die Achse, um die gedreht werden soll ('X', 'Y' oder 'Z')
@@ -94,26 +121,28 @@ def rotate_object(name: str, axis: str = "Z", angle: float = 45.0) -> str:
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def capture_view(view_type: str = "iso") -> Image:
     """
     Erstellt einen Screenshot der aktuellen 3D-Ansicht in FreeCAD.
     Ermöglicht dem Modell, das Ergebnis visuell zu prüfen.
-    
+
     Args:
         view_type: "iso", "top", "front", oder "right".
     """
     try:
         bridge = get_bridge()
         base64_data = bridge.capture_view("freecad_view.png", view_type)
-        
+
         if base64_data.startswith("Fehler"):
             raise Exception(base64_data)
-            
+
         img_bytes = base64.b64decode(base64_data)
         return Image(data=img_bytes, format="png")
     except Exception as e:
         raise Exception(f"Screenshot-Fehler: {str(e)}")
+
 
 @mcp.tool()
 def boolean_union(obj_a: str, obj_b: str) -> str:
@@ -125,6 +154,7 @@ def boolean_union(obj_a: str, obj_b: str) -> str:
         return bridge.bool_union(obj_a, obj_b)
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def boolean_cut(base_obj: str, tool_obj: str) -> str:
@@ -138,6 +168,7 @@ def boolean_cut(base_obj: str, tool_obj: str) -> str:
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_sphere(radius: str = "5mm") -> str:
     """
@@ -149,6 +180,7 @@ def create_sphere(radius: str = "5mm") -> str:
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 # --- BIM / Arch Tools ---
 #################################################################################
 @mcp.tool()
@@ -159,20 +191,24 @@ def create_site(name: str = "ProjektGelaende") -> str:
     try:
         bridge = get_bridge()
         return bridge.erstelle_site(name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_building(name: str = "MeinHaus") -> str:
     """
-    Erstellt ein Gebäude (Arch Building). Ein Gebäude ist ein spezielles 
-    FreeCAD-Gruppenobjekt, das sich besonders dafür eignet, 
-    eine ganze Gebäudeeinheit zu repräsentieren. 
+    Erstellt ein Gebäude (Arch Building). Ein Gebäude ist ein spezielles
+    FreeCAD-Gruppenobjekt, das sich besonders dafür eignet,
+    eine ganze Gebäudeeinheit zu repräsentieren.
     Es wird durch enthaltene Stockwerk-Objekte zur Organisation des Modells eingesetzt.
     """
     try:
         bridge = get_bridge()
         return bridge.erstelle_gebaeude(name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_floor(name: str = "Erdgeschoss") -> str:
@@ -182,7 +218,9 @@ def create_floor(name: str = "Erdgeschoss") -> str:
     try:
         bridge = get_bridge()
         return bridge.erstelle_stockwerk(name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def add_to_container(object_name: str, container_name: str) -> str:
@@ -192,13 +230,15 @@ def add_to_container(object_name: str, container_name: str) -> str:
     try:
         bridge = get_bridge()
         return bridge.fuege_zu_container_hinzu(object_name, container_name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def add_to_container_batch(object_names: list[str], container_name: str) -> str:
     """
     Fügt mehrere Objekte auf einmal zu einem Container hinzu.
-    
+
     Args:
         object_names: Liste von Namen/Labeln der Objekte.
         container_name: Name/Label des Containers (z.B. "Erdgeschoss").
@@ -206,24 +246,46 @@ def add_to_container_batch(object_names: list[str], container_name: str) -> str:
     try:
         bridge = get_bridge()
         return bridge.fuege_mehrere_zu_container_hinzu(object_names, container_name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_slab(length: str = "10m", width: str = "8m", height: str = "300mm", name: str = "Bodenplatte",
-                placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm") -> str:
+def create_slab(
+    length: str = "10m",
+    width: str = "8m",
+    height: str = "300mm",
+    name: str = "Bodenplatte",
+    placement_x: str = "0mm",
+    placement_y: str = "0mm",
+    placement_z: str = "0mm",
+    direction: str = "-z",
+) -> str:
     """
-    Erstellt eine Slab (Bodenplatte). 
-    Die Slab wird immer in Richtung -z (nach unten) extrudiert!
+    Erstellt eine Slab (Bodenplatte).
+
+    Args:
+        direction: '-z' (Default) extrudiert nach unten — placement_z ist die OBERKANTE.
+                   '+z' extrudiert nach oben — placement_z ist die UNTERKANTE.
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_bodenplatte(length, width, height, name, placement_x, placement_y, placement_z)
-    except Exception as e: return f"Fehler: {str(e)}"
+        return bridge.erstelle_bodenplatte(
+            length,
+            width,
+            height,
+            name,
+            placement_x,
+            placement_y,
+            placement_z,
+            direction,
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
 
 
 @mcp.tool()
-def join_walls(
-        walls: list[str] = ['Wall1', "Wall2", "Wall3"]):
+def join_walls(walls: list[str] = ["Wall1", "Wall2", "Wall3"]):
     """
     Vereinigt Wände zu einem Wall-Objekt.
     Die Namen der Wände MÜSSEN als list übergeben werden.
@@ -232,7 +294,7 @@ def join_walls(
         bridge = get_bridge()
         # Übergabe der Punkte und Maße an deine Bridge
         return bridge.vereinigen_Wand(walls)
-    except Exception as e: 
+    except Exception as e:
         return f"Fehler im MCP-Tool beim Erstellen der Wand: {str(e)}"
 
 
@@ -242,13 +304,13 @@ def create_wall(
     p2: list[float] = [5000.0, 0.0, 0.0],
     width: str = "300mm",
     height: str = "2500mm",
-    name: str = "Aussenwand1"
+    name: str = "Aussenwand1",
+    align: str = "Center",
+    align_to: str | None = None,
 ) -> str:
     """
     Erstellt eine gerade Wand (Arch Wall) zwischen zwei 3D-Punkten.
-    Die Wand wird immer mit der Ausrichtung (align) "center" 
-    auf der Baseline errichtet.
-    
+
 
     Args:
         p1: Startpunkt als [X, Y, Z] Koordinate in METERN (z.B. [0, 0, 0]).
@@ -256,13 +318,18 @@ def create_wall(
         width: Die Dicke der Wand mit Einheit (z.B. '300mm').
         height: Die Höhe der Wand mit Einheit (z.B. '2500mm').
         name: Das sichtbare Label der Wand in FreeCAD.
+        align: 'Left' | 'Center' (Default) | 'Right' — richtungsabhängig zur Wandrichtung (p1→p2).
+        align_to: 'inside' | 'outside' — überschreibt align (Wand-Normale bestimmt die Seite).
     """
     try:
         bridge = get_bridge()
         # Übergabe der Punkte und Maße an deine Bridge
-        return bridge.erstelle_wand_aus_punkten(p1, p2, width, height, name)
-    except Exception as e: 
+        return bridge.erstelle_wand_aus_punkten(
+            p1, p2, width, height, name, align, align_to
+        )
+    except Exception as e:
         return f"Fehler im MCP-Tool beim Erstellen der Wand: {str(e)}"
+
 
 @mcp.tool()
 def align_wall(wand_bezeichnung, align="Left", align_to=None):
@@ -278,8 +345,9 @@ def align_wall(wand_bezeichnung, align="Left", align_to=None):
     try:
         bridge = get_bridge()
         return bridge.ausrichten_wand(wand_bezeichnung, align, align_to)
-    except Exception as e: 
+    except Exception as e:
         return f"Fehler im MCP-Tool Wand_ausrichten: {str(e)}"
+
 
 @mcp.tool()
 def create_window(
@@ -290,13 +358,13 @@ def create_window(
     sill_height: str = "0mm",
     windowtype: str = "Simple door",
     name: str = "Fenster",
-    wall_name: str | None = None
+    wall_name: str | None = None,
 ) -> str:
     """
     Erstellt ein Fenster oder eine Tür und fügt sie passgenau in eine bestehende Wand ein.
 
     Args:
-        wall_ident: Das sichtbare Label der Wand in FreeCAD (z.B. 'Aussenwand1'). 
+        wall_ident: Das sichtbare Label der Wand in FreeCAD (z.B. 'Aussenwand1').
         distance_from_start: Abstand vom Startpunkt der Wand (z.B. '1.5m' oder '500mm').
         width: Breite des Fensters/der Tür (z.B. '900mm').
         height: Höhe des Fensters/der Tür (z.B. '2000mm').
@@ -319,15 +387,18 @@ def create_window(
             height,
             sill_height,
             windowtype,
-            name
+            name,
         )
         return result
 
     except Exception as e:
         return f"Fehler im MCP-Tool create_window() beim Erstellen: {str(e)}"
 
+
 @mcp.tool()
-def create_point(x: str = "0mm", y: str = "0mm", z: str = "0mm", name: str = "Punkt") -> str:
+def create_point(
+    x: str = "0mm", y: str = "0mm", z: str = "0mm", name: str = "Punkt"
+) -> str:
     """
     Erstellt ein Draft-Punktobjekt bei den angegebenen Koordinaten.
     Koordinaten können als Einheiten-Strings angegeben werden (z.B. '100mm').
@@ -335,10 +406,14 @@ def create_point(x: str = "0mm", y: str = "0mm", z: str = "0mm", name: str = "Pu
     try:
         bridge = get_bridge()
         return bridge.erstelle_punkt(x, y, z, name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_line(p1: str = "0mm,0mm,0mm", p2: str = "1000mm,0mm,0mm", name: str = "Linie") -> str:
+def create_line(
+    p1: str = "0mm,0mm,0mm", p2: str = "1000mm,0mm,0mm", name: str = "Linie"
+) -> str:
     """
     Erstellt eine Draft-Linie zwischen zwei Punkten.
     Punkte können als Komma-getrennte Strings (z.B. '0,0,0') oder mit Einheiten (z.B. '10m,2m,0m') angegeben werden.
@@ -346,7 +421,9 @@ def create_line(p1: str = "0mm,0mm,0mm", p2: str = "1000mm,0mm,0mm", name: str =
     try:
         bridge = get_bridge()
         return bridge.erstelle_draft_line(p1, p2, name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_polyline(points: list, closed: bool = True, name: str = "Polyline") -> str:
@@ -357,22 +434,38 @@ def create_polyline(points: list, closed: bool = True, name: str = "Polyline") -
     try:
         bridge = get_bridge()
         return bridge.erstelle_draft_polyline(points, closed)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_rectangle(length: str = "100mm", width: str = "50mm",
-                    placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm") -> str:
+def create_rectangle(
+    length: str = "100mm",
+    width: str = "50mm",
+    placement_x: str = "0mm",
+    placement_y: str = "0mm",
+    placement_z: str = "0mm",
+) -> str:
     """
     Erstellt ein Draft-Rechteck.
     Dimensionen und Platzierung können als Einheiten-Strings angegeben werden.
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_rechteck(length, width, placement_x, placement_y, placement_z)
-    except Exception as e: return f"Fehler: {str(e)}"
+        return bridge.erstelle_rechteck(
+            length, width, placement_x, placement_y, placement_z
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_circle(radius: str = "50mm", placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm") -> str:
+def create_circle(
+    radius: str = "50mm",
+    placement_x: str = "0mm",
+    placement_y: str = "0mm",
+    placement_z: str = "0mm",
+) -> str:
     """
     Erstellt einen Draft-Kreis.
     Radius und Platzierung können als Einheiten-Strings angegeben werden.
@@ -380,19 +473,31 @@ def create_circle(radius: str = "50mm", placement_x: str = "0mm", placement_y: s
     try:
         bridge = get_bridge()
         return bridge.erstelle_kreis(radius, placement_x, placement_y, placement_z)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_arc(center_x: str = "0mm", center_y: str = "0mm", center_z: str = "0mm", 
-               radius: str = "50mm", start_angle: str = "0deg", end_angle: str = "90deg") -> str:
+def create_arc(
+    center_x: str = "0mm",
+    center_y: str = "0mm",
+    center_z: str = "0mm",
+    radius: str = "50mm",
+    start_angle: str = "0deg",
+    end_angle: str = "90deg",
+) -> str:
     """
     Erstellt einen Draft-Kreisbogen.
     Zentrums-Koordinaten, Radius und Winkel können als Einheiten/Grad-Strings angegeben werden.
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_kreisbogen(center_x, center_y, center_z, radius, start_angle, end_angle)
-    except Exception as e: return f"Fehler: {str(e)}"
+        return bridge.erstelle_kreisbogen(
+            center_x, center_y, center_z, radius, start_angle, end_angle
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def set_ifc_data(object_name: str, properties_json: str = "{}") -> str:
@@ -404,10 +509,31 @@ def set_ifc_data(object_name: str, properties_json: str = "{}") -> str:
     try:
         bridge = get_bridge()
         return bridge.setze_ifc_daten(object_name, properties_json)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def set_material(object_name: str, material_name: str, color_rgb: str = "(0.8, 0.8, 0.8)") -> str:
+def set_ifc_type(object_name: str, ifc_type: str) -> str:
+    """
+    Sets the IFC type of an Arch object (e.g. 'Wall', 'Slab', 'Roof', 'Curtain Wall', 'Door').
+    Only valid for objects with an IfcType property.
+
+    Args:
+        object_name: Name or label of the object.
+        ifc_type: Valid IFC type of the object's IfcType enumeration.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.setze_ifc_typ(object_name, ifc_type)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+
+@mcp.tool()
+def set_material(
+    object_name: str, material_name: str, color_rgb: str = "(0.8, 0.8, 0.8)"
+) -> str:
     """
     Weist einem FreeCAD-Objekt ein Material zu.
     `color_rgb` als String "(R, G, B)" mit Werten von 0.0 bis 1.0.
@@ -417,13 +543,17 @@ def set_material(object_name: str, material_name: str, color_rgb: str = "(0.8, 0
         # Parse color_rgb string to tuple
         rgb_tuple = tuple(map(float, color_rgb.strip("()").split(",")))
         return bridge.setze_material(object_name, material_name, rgb_tuple)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def set_material_batch(object_names: list[str], material_name: str, color_rgb: str = "(0.8, 0.8, 0.8)") -> str:
+def set_material_batch(
+    object_names: list[str], material_name: str, color_rgb: str = "(0.8, 0.8, 0.8)"
+) -> str:
     """
     Weist mehreren Objekten auf einmal ein Material zu.
-    
+
     Args:
         object_names: Liste von Namen/Labeln der Objekte.
         material_name: Name des Materials.
@@ -433,7 +563,9 @@ def set_material_batch(object_names: list[str], material_name: str, color_rgb: s
         bridge = get_bridge()
         rgb_tuple = tuple(map(float, color_rgb.strip("()").split(",")))
         return bridge.setze_material_mehrere(object_names, material_name, rgb_tuple)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def get_quantities(object_name: str) -> str:
@@ -443,12 +575,14 @@ def get_quantities(object_name: str) -> str:
     try:
         bridge = get_bridge()
         return bridge.ermittle_mengen(object_name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def add_to_wall(wall_name: str, component_name: str) -> str:
     """
-    Fügt ein Fenster oder eine Tür in eine Wand ein. 
+    Fügt ein Fenster oder eine Tür in eine Wand ein.
     Die Wand schneidet automatisch ein passendes Loch für das Objekt.
     """
     try:
@@ -457,20 +591,29 @@ def add_to_wall(wall_name: str, component_name: str) -> str:
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def create_structure(length: str = "100mm", width: str = "20mm", height: str = "20mm", name: str = "Balken",
-                    position_x: float | None = None,
-                    position_y: float | None = None,
-                    position_z: float | None = None) -> str:
+def create_structure(
+    length: str = "100mm",
+    width: str = "20mm",
+    height: str = "20mm",
+    name: str = "Balken",
+    position_x: float | None = None,
+    position_y: float | None = None,
+    position_z: float | None = None,
+) -> str:
     """
     Erstellt ein Tragwerk-Element (Arch Structure) wie einen Balken oder eine Säule. Unterstützt Einheiten.
     Optionale position_x/y/z setzen die Position in METERN.
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_struktur(length, width, height, name, position_x, position_y, position_z)
+        return bridge.erstelle_struktur(
+            length, width, height, name, position_x, position_y, position_z
+        )
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_profiled_structure(
@@ -480,7 +623,8 @@ def create_profiled_structure(
     category: str | None = None,
     position_x: float | None = None,
     position_y: float | None = None,
-    position_z: float | None = None) -> str:
+    position_z: float | None = None,
+) -> str:
     """
     Erstellt ein Tragwerk-Element (Arch Structure) mit vordefiniertem Profil aus profiles_copy.csv.
     Unterstützte Profil-Klassen: C (Rundhohl), H (I/H-Träger), R (Vollrechteck),
@@ -492,18 +636,21 @@ def create_profiled_structure(
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_profil_struktur(profile_name, height, name, position_x, position_y, position_z, category)
+        return bridge.erstelle_profil_struktur(
+            profile_name, height, name, position_x, position_y, position_z, category
+        )
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def execute_python(script: str) -> str:
     """
     ULTIMATIVES WERKZEUG: Führt beliebigen Python-Code direkt in FreeCAD aus.
-    Benutze dieses Tool IMMER, wenn es kein spezialisiertes Tool für eine Aufgabe gibt 
+    Benutze dieses Tool IMMER, wenn es kein spezialisiertes Tool für eine Aufgabe gibt
     (z.B. für Spheres (falls create_sphere fehlt), Torus, Lofts, Fillets, Offsets etc.).
     Du hast vollen Zugriff auf 'App', 'Gui' und 'Part'.
-    
+
     Beispiel für eine Kugel: 'App.ActiveDocument.addObject("Part::Sphere", "MySphere")'
     """
     try:
@@ -511,6 +658,7 @@ def execute_python(script: str) -> str:
         return bridge.run_python(script)
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def export_ifc(file_path: str = "model.ifc") -> str:
@@ -523,6 +671,7 @@ def export_ifc(file_path: str = "model.ifc") -> str:
         return bridge.exportiere_ifc(file_path)
     except Exception as e:
         return f"Fehler beim IFC-Export: {str(e)}"
+
 
 @mcp.tool()
 def analyze_ifc(file_path: str) -> str:
@@ -537,23 +686,28 @@ def analyze_ifc(file_path: str) -> str:
     except Exception as e:
         return f"Fehler bei der IFC-Analyse: {str(e)}"
 
+
 # --- BIM Erweiterung Phase 1 ---
 @mcp.tool()
 def create_roof(
     basewire: list[list[float]],
     overhang: str = "500mm",
     thickness: str = "100mm",
-    angle: float = 30.0,
-    name: str = "Dach"
+    angle: float | list[float] = 30.0,
+    name: str = "Dach",
 ) -> str:
     """
     Erstellt ein Dach (Arch Roof) aus einem geschlossenen Linienzug.
+    Firsthoehe je Flaeche = Basis-z + Run * tan(Winkel); Runs werden automatisch
+    aus der halben Distanz zur parallelen Gegenseite berechnet.
 
     Args:
         basewire: Liste von [X,Y,Z]-Punkten in METERN für den Dachumriss (z.B. [[0,0,0], [5,0,0], [5,4,0], [0,4,0]]).
         overhang: Dachüberstand mit Einheit (z.B. '500mm').
         thickness: Dicke der Dachdeckung mit Einheit (z.B. '100mm').
-        angle: Dachneigung in Grad (z.B. 30.0).
+        angle: Dachneigung in Grad — float (alle Flächen) ODER Liste
+               (ein Winkel pro Umriss-Kante, Reihenfolge wie basewire-Punkte;
+               90 = senkrechte Giebelfläche, nur mit angrenzender geneigter Kante darstellbar).
         name: Label des Dachs in FreeCAD.
     """
     try:
@@ -562,12 +716,13 @@ def create_roof(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_stairs(
     height: str = "2500mm",
     width: str = "1200mm",
     landing: bool = False,
-    name: str = "Treppe"
+    name: str = "Treppe",
 ) -> str:
     """
     Erstellt eine Treppe (Arch Stairs) in der XY-Ebene.
@@ -585,6 +740,7 @@ def create_stairs(
         return bridge.erstelle_treppe(height, width, landing, name)
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_axis(
@@ -604,7 +760,7 @@ def create_axis(
     bubble_position: str = "Left",
     show_labels: str = "True",
     font_name: str = "",
-    name: str = "Achsen"
+    name: str = "Achsen",
 ) -> str:
     """
     Erstellt ein Arch-Achsen-System mit mehreren parallelen Achsen.
@@ -635,13 +791,27 @@ def create_axis(
     try:
         bridge = get_bridge()
         return bridge.erstelle_achse(
-            count, spacing, length, for_building, building_pad,
-            x, y, z, rotation,
-            numbering_style, bubble_size, font_size, line_width,
-            bubble_position, show_labels, font_name, name
+            count,
+            spacing,
+            length,
+            for_building,
+            building_pad,
+            x,
+            y,
+            z,
+            rotation,
+            numbering_style,
+            bubble_size,
+            font_size,
+            line_width,
+            bubble_position,
+            show_labels,
+            font_name,
+            name,
         )
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_axes(axes: list[dict]) -> str:
@@ -662,13 +832,12 @@ def create_axes(axes: list[dict]) -> str:
     try:
         bridge = get_bridge()
         return bridge.erstelle_mehrere_achsen(axes)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_axis_system(
-    axes: list[str],
-    name: str = "Achsensystem"
-) -> str:
+def create_axis_system(axes: list[str], name: str = "Achsensystem") -> str:
     """
     Erstellt ein Achssystem (Arch AxisSystem) aus mehreren bestehenden Achsen.
 
@@ -686,13 +855,14 @@ def create_axis_system(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_section_plane(
     x: str = "0mm",
     y: str = "0mm",
     z: str = "1500mm",
     direction: str = "Z",
-    name: str = "Schnitt_A"
+    name: str = "Schnitt_A",
 ) -> str:
     """
     Erstellt eine Schnittebene (Arch SectionPlane) für Grundrisse und Schnitte.
@@ -710,11 +880,9 @@ def create_section_plane(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def clone_object(
-    source_name: str,
-    new_name: str = "Klon"
-) -> str:
+def clone_object(source_name: str, new_name: str = "Klon") -> str:
     """
     Erstellt einen Klon eines bestehenden FreeCAD-Objekts (Draft Clone).
 
@@ -728,6 +896,7 @@ def clone_object(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def mirror_object(
     source_name: str,
@@ -735,7 +904,7 @@ def mirror_object(
     origin_x: float = 0.0,
     origin_y: float = 0.0,
     origin_z: float = 0.0,
-    new_name: str = "Gespiegelt"
+    new_name: str = "Gespiegelt",
 ) -> str:
     """
     Spiegelt ein FreeCAD-Objekt an einer Achse (Part Mirror).
@@ -743,16 +912,19 @@ def mirror_object(
     Args:
         source_name: Name oder Label des zu spiegelnden Objekts.
         axis: Spiegelachse ('X', 'Y' oder 'Z').
-        origin_x: X-Koordinate des Spiegelursprungs.
-        origin_y: Y-Koordinate des Spiegelursprungs.
-        origin_z: Z-Koordinate des Spiegelursprungs.
+        origin_x: X-Koordinate des Spiegelursprungs in METERN (alternativ Einheiten-String wie '4000mm').
+        origin_y: Y-Koordinate des Spiegelursprungs in METERN (alternativ Einheiten-String).
+        origin_z: Z-Koordinate des Spiegelursprungs in METERN (alternativ Einheiten-String).
         new_name: Label des gespiegelten Objekts.
     """
     try:
         bridge = get_bridge()
-        return bridge.spiegele_objekt(source_name, axis, origin_x, origin_y, origin_z, new_name)
+        return bridge.spiegele_objekt(
+            source_name, axis, origin_x, origin_y, origin_z, new_name
+        )
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 # --- BIM Erweiterung Phase 2 ---
 @mcp.tool()
@@ -762,7 +934,7 @@ def create_text(
     y: str = "0mm",
     z: str = "0mm",
     font_size: str = "100mm",
-    name: str = "Text"
+    name: str = "Text",
 ) -> str:
     """
     Erstellt einen Draft-Text in der 3D-Ansicht.
@@ -781,12 +953,10 @@ def create_text(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_dimension(
-    p1: list[float],
-    p2: list[float],
-    p3: list[float],
-    name: str = "Mass"
+    p1: list[float], p2: list[float], p3: list[float], name: str = "Mass"
 ) -> str:
     """
     Erstellt eine Draft-Bemaessung zwischen zwei Punkten.
@@ -803,12 +973,13 @@ def create_dimension(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def fillet(
     object_name: str,
     radius: str = "5mm",
     edge_indices: list[int] | None = None,
-    name: str = "Verrundet"
+    name: str = "Verrundet",
 ) -> str:
     """
     Verrundet Kanten eines Objekts (Part Fillet).
@@ -825,12 +996,13 @@ def fillet(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def chamfer(
     object_name: str,
     length: str = "5mm",
     edge_indices: list[int] | None = None,
-    name: str = "Gefast"
+    name: str = "Gefast",
 ) -> str:
     """
     Fast Kanten eines Objekts (Part Chamfer).
@@ -847,12 +1019,13 @@ def chamfer(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_panel(
     length: str = "1000mm",
     width: str = "500mm",
     thickness: str = "50mm",
-    name: str = "Paneel"
+    name: str = "Paneel",
 ) -> str:
     """
     Erstellt ein Arch-Panel (Paneel/Platte).
@@ -869,10 +1042,9 @@ def create_panel(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def import_dxf(
-    file_path: str
-) -> str:
+def import_dxf(file_path: str) -> str:
     """
     Importiert eine DXF-Datei in FreeCAD.
 
@@ -885,10 +1057,9 @@ def import_dxf(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def export_dxf(
-    file_path: str = "export.dxf"
-) -> str:
+def export_dxf(file_path: str = "export.dxf") -> str:
     """
     Exportiert das aktuelle FreeCAD-Dokument als DXF.
 
@@ -901,10 +1072,9 @@ def export_dxf(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def export_pdf(
-    file_path: str = "plan.pdf"
-) -> str:
+def export_pdf(file_path: str = "plan.pdf") -> str:
     """
     Exportiert die aktuelle Seite (TechDraw) als PDF.
 
@@ -917,10 +1087,9 @@ def export_pdf(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
-def export_svg(
-    file_path: str = "export.svg"
-) -> str:
+def export_svg(file_path: str = "export.svg") -> str:
     """
     Exportiert das aktuelle FreeCAD-Dokument als SVG.
 
@@ -933,6 +1102,7 @@ def export_svg(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 # --- BIM Erweiterung Phase 3 ---
 @mcp.tool()
 def create_window_sketch(
@@ -940,7 +1110,7 @@ def create_window_sketch(
     width: str = "900mm",
     height: str = "1200mm",
     sill_height: str = "900mm",
-    name: str = "Fenster_Skizze"
+    name: str = "Fenster_Skizze",
 ) -> str:
     """
     Erstellt ein benutzerdefiniertes Fenster in einer Wand (aus Rechteck-Skizze).
@@ -954,16 +1124,19 @@ def create_window_sketch(
     """
     try:
         bridge = get_bridge()
-        return bridge.erstelle_fenster_skizze(wall_ident, width, height, sill_height, name)
+        return bridge.erstelle_fenster_skizze(
+            wall_ident, width, height, sill_height, name
+        )
     except Exception as e:
         return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def create_curtain_wall(
     basewire: list[list[float]],
     panel_width: str = "1000mm",
     panel_height: str = "2500mm",
-    name: str = "Vorhangfassade"
+    name: str = "Vorhangfassade",
 ) -> str:
     """
     Erstellt eine Vorhangfassade (Arch CurtainWall) entlang eines Linienzugs.
@@ -980,12 +1153,13 @@ def create_curtain_wall(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_pipe(
     basewire: list[list[float]],
     outer_diameter: str = "100mm",
     wall_thickness: str = "5mm",
-    name: str = "Rohr"
+    name: str = "Rohr",
 ) -> str:
     """
     Erstellt ein Rohr (Arch Pipe) entlang eines Linienzugs.
@@ -1002,12 +1176,13 @@ def create_pipe(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_duct(
     basewire: list[list[float]],
     width: str = "300mm",
     height: str = "200mm",
-    name: str = "Kanal"
+    name: str = "Kanal",
 ) -> str:
     """
     Erstellt einen rechteckigen Luftkanal entlang eines Linienzugs (Part Sweep).
@@ -1024,11 +1199,12 @@ def create_duct(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_schedule(
     object_type: str = "Window",
     properties: str = "Label,Width,Height",
-    name: str = "Ausgabe_Auszug"
+    name: str = "Ausgabe_Auszug",
 ) -> str:
     """
     Erstellt einen Mengenauszug / eine Objektliste (Arch Schedule).
@@ -1044,11 +1220,10 @@ def create_schedule(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def create_2d_view(
-    source_name: str,
-    direction: str = "Front",
-    name: str = "2D_Ansicht"
+    source_name: str, direction: str = "Front", name: str = "2D_Ansicht"
 ) -> str:
     """
     Erstellt eine TechDraw-2D-Ansicht eines Objekts.
@@ -1064,6 +1239,7 @@ def create_2d_view(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 # --- MCP Tool Lücken (13 neue Tools) ---
 @mcp.tool()
 def get_object_info(object_name: str) -> str:
@@ -1074,13 +1250,15 @@ def get_object_info(object_name: str) -> str:
     try:
         bridge = get_bridge()
         return bridge.objekt_info_abrufen(object_name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def rename_object(object: str, new_label: str) -> str:
     """
     Benennt ein FreeCAD-Objekt um (setzt das Label).
-    
+
     Args:
         object: Name oder aktuelles Label des Objekts.
         new_label: Neues Label für das Objekt.
@@ -1088,7 +1266,9 @@ def rename_object(object: str, new_label: str) -> str:
     try:
         bridge = get_bridge()
         return bridge.umbenennen_objekt(object, new_label)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def set_visibility(object: str, visible: bool) -> str:
@@ -1099,14 +1279,16 @@ def set_visibility(object: str, visible: bool) -> str:
     try:
         bridge = get_bridge()
         return bridge.sichtbarkeit_setzen(object, visible)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def move_line(line: str, start: list[float], end: list[float]) -> str:
     """
     Verschiebt die Start/End-Punkte einer Draft-Linie.
     Nützlich für Baseline-Korrekturen bei Wänden.
-    
+
     Args:
         line: Name oder Label der Draft-Linie.
         start: Neuer Startpunkt als [X, Y, Z] in METERN.
@@ -1115,14 +1297,16 @@ def move_line(line: str, start: list[float], end: list[float]) -> str:
     try:
         bridge = get_bridge()
         return bridge.linie_verschieben(line, start, end)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def set_wall_alignment(wall: str, ref_at_outside: bool = True) -> str:
     """
     Verschiebt die Referenzlinie einer Wand an die Außenkante und setzt das Align.
     In einem Schritt: Baseline verschieben + korrektes Align setzen.
-    
+
     Args:
         wall: Name oder Label der Wand.
         ref_at_outside: Wenn True, wird die Referenzlinie an die Außenseite gelegt.
@@ -1130,14 +1314,18 @@ def set_wall_alignment(wall: str, ref_at_outside: bool = True) -> str:
     try:
         bridge = get_bridge()
         return bridge.wand_ausrichtung_setzen(wall, ref_at_outside)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def boolean_cut_finalize(cut_result: str, new_label: str, container: str = "", hide_sources: bool = True) -> str:
+def boolean_cut_finalize(
+    cut_result: str, new_label: str, container: str = "", hide_sources: bool = True
+) -> str:
     """
     Schließt einen Boolean-Cut ab: Ergebnis umbenennen, Quellen verstecken, in Container einsortieren.
     Erspart die manuellen Nachbearbeitungsschritte.
-    
+
     Args:
         cut_result: Name des Cut-Objekts (z.B. "Schnitt").
         new_label: Neues Label für das Cut-Ergebnis.
@@ -1146,15 +1334,25 @@ def boolean_cut_finalize(cut_result: str, new_label: str, container: str = "", h
     """
     try:
         bridge = get_bridge()
-        return bridge.bool_cut_finalisieren(cut_result, new_label, container, hide_sources)
-    except Exception as e: return f"Fehler: {str(e)}"
+        return bridge.bool_cut_finalisieren(
+            cut_result, new_label, container, hide_sources
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_opening(base_object: str, shape: str = "rectangle", position: list[float] = None, size: list[float] = None, name: str = "Oeffnung") -> str:
+def create_opening(
+    base_object: str,
+    shape: str = "rectangle",
+    position: list[float] = None,
+    size: list[float] = None,
+    name: str = "Oeffnung",
+) -> str:
     """
     Erstellt eine Öffnung (Durchbruch) in einem Bauteil via Boolean-Cut.
     IFC-konforme Alternative zu manuellem Schneiden.
-    
+
     Args:
         base_object: Name oder Label des Basis-Objekts (z.B. Decke, Wand).
         shape: Form der Öffnung (nur 'rectangle' unterstützt).
@@ -1162,19 +1360,28 @@ def create_opening(base_object: str, shape: str = "rectangle", position: list[fl
         size: Größe als [Width, Height, Depth] in METERN.
         name: Label der Öffnung.
     """
-    if position is None: position = [0, 0, 0]
-    if size is None: size = [1, 1, 0.2]
+    if position is None:
+        position = [0, 0, 0]
+    if size is None:
+        size = [1, 1, 0.2]
     try:
         bridge = get_bridge()
         return bridge.erstelle_oeffnung(base_object, shape, position, size, name)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def copy_to_floor(source_walls: list[str], target_floor: str, z_offset: float = 3.24, x_extension: float = 0.0) -> str:
+def copy_to_floor(
+    source_walls: list[str],
+    target_floor: str,
+    z_offset: float = 3.24,
+    x_extension: float = 0.0,
+) -> str:
     """
     Kopiert Wände von einem Geschoss auf ein anderes (z.B. EG -> OG).
     Die kopierten Wände werden auf die Zielgeschoss-Höhe verschoben und können verlängert werden.
-    
+
     Args:
         source_walls: Liste von Wand-Namen/Labeln (z.B. ["KA_Nord_EG", "KA_Ost_EG"]).
         target_floor: Ziel-Container (z.B. "Obergeschoss").
@@ -1183,14 +1390,24 @@ def copy_to_floor(source_walls: list[str], target_floor: str, z_offset: float = 
     """
     try:
         bridge = get_bridge()
-        return bridge.kopiere_nach_geschoss(source_walls, target_floor, z_offset, x_extension)
-    except Exception as e: return f"Fehler: {str(e)}"
+        return bridge.kopiere_nach_geschoss(
+            source_walls, target_floor, z_offset, x_extension
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_attika(roof_slab: str, height: float = 0.3, thickness: float = 0.365, offset: float = 0.0, name_prefix: str = "Attika") -> str:
+def create_attika(
+    roof_slab: str,
+    height: float = 0.3,
+    thickness: float = 0.365,
+    offset: float = 0.0,
+    name_prefix: str = "Attika",
+) -> str:
     """
     Erzeugt Attika-Wände automatisch entlang des Slab-Perimeters.
-    
+
     Args:
         roof_slab: Name oder Label der Dachplatte.
         height: Attikahöhe in METERN (z.B. 0.3 für 30cm).
@@ -1201,39 +1418,64 @@ def create_attika(roof_slab: str, height: float = 0.3, thickness: float = 0.365,
     try:
         bridge = get_bridge()
         return bridge.erstelle_attika(roof_slab, height, thickness, offset, name_prefix)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
-def create_slab_with_openings(length: str = "10m", width: str = "8m", height: str = "300mm",
-                             placement_x: str = "0mm", placement_y: str = "0mm", placement_z: str = "0mm",
-                             openings: list[dict] = None, name: str = "Geschossdecke") -> str:
+def create_slab_with_openings(
+    length: str = "10m",
+    width: str = "8m",
+    height: str = "300mm",
+    placement_x: str = "0mm",
+    placement_y: str = "0mm",
+    placement_z: str = "0mm",
+    openings: list[dict] = None,
+    name: str = "Geschossdecke",
+    direction: str = "-z",
+) -> str:
     """
     Erstellt eine Geschossdecke mit rechteckigen Durchbrüchen in einem Schritt.
     'openings' ist eine Liste von Dicts: {"x": 1.4, "y": 0.9, "w": 3.7, "h": 1.2}
     wobei x,y relative Offsets von der Slab-Platzierung in METERN sind und w,h die Öffnungsgrösse in METERN.
-    
+
     Args:
         length: Länge der Decke als String (z.B. '10m').
         width: Breite der Decke als String (z.B. '8m').
         height: Dicke der Decke als String (z.B. '300mm').
         placement_x: X-Platzierung.
         placement_y: Y-Platzierung.
-        placement_z: Z-Platzierung (Oberkante).
+        placement_z: Z-Platzierung (bei direction='-z' die Oberkante, bei '+z' die Unterkante).
         openings: Liste von Öffnungs-Dicts mit x,y,w,h in METERN.
         name: Label der Decke.
+        direction: '-z' (Default) extrudiert nach unten — placement_z ist die OBERKANTE.
+                   '+z' extrudiert nach oben — placement_z ist die UNTERKANTE.
     """
-    if openings is None: openings = []
+    if openings is None:
+        openings = []
     try:
         bridge = get_bridge()
-        return bridge.erstelle_decke_mit_oeffnungen(length, width, height, placement_x, placement_y, placement_z, openings, name)
-    except Exception as e: return f"Fehler: {str(e)}"
+        return bridge.erstelle_decke_mit_oeffnungen(
+            length,
+            width,
+            height,
+            placement_x,
+            placement_y,
+            placement_z,
+            openings,
+            name,
+            direction,
+        )
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def align_walls_in_container(container: str, ref_at: str = "outside") -> str:
     """
     Richtet alle Wände in einem Container (Geschoss) einheitlich aus.
     Erkennt automatisch Nord/Süd/Ost/West und setzt korrektes Align.
-    
+
     Args:
         container: Name des Containers (z.B. "Erdgeschoss").
         ref_at: "outside" für Außenausrichtung, "inside" für Innenausrichtung.
@@ -1241,7 +1483,9 @@ def align_walls_in_container(container: str, ref_at: str = "outside") -> str:
     try:
         bridge = get_bridge()
         return bridge.waende_in_container_ausrichten(container, ref_at)
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def validate_model() -> str:
@@ -1254,7 +1498,9 @@ def validate_model() -> str:
     try:
         bridge = get_bridge()
         return bridge.modell_validieren()
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 @mcp.tool()
 def validate_ifc_export() -> str:
@@ -1266,18 +1512,17 @@ def validate_ifc_export() -> str:
     try:
         bridge = get_bridge()
         return bridge.validiere_ifc_export()
-    except Exception as e: return f"Fehler: {str(e)}"
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 # --- Space / Raum ---
 @mcp.tool()
-def create_space(
-    base_object: str | None = None,
-    name: str = "Raum"
-) -> str:
+def create_space(base_object: str | None = None, name: str = "Raum") -> str:
     """
     Erstellt einen Raum (Arch Space).
     Das Volumen wird entweder von einem bestehenden Festkörper (base_object) abgeleitet
-    oder als leeres Volumen angelegt. Begrenzungsflächen können separat mit 
+    oder als leeres Volumen angelegt. Begrenzungsflächen können separat mit
     add_space_boundary hinzugefügt werden.
 
     Args:
@@ -1290,11 +1535,10 @@ def create_space(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def add_space_boundary(
-    space_name: str,
-    object_name: str,
-    faces: list[str] | None = None
+    space_name: str, object_name: str, faces: list[str] | None = None
 ) -> str:
     """
     Fügt einem Raum Begrenzungsflächen hinzu.
@@ -1312,11 +1556,10 @@ def add_space_boundary(
     except Exception as e:
         return f"Fehler: {str(e)}"
 
+
 @mcp.tool()
 def remove_space_boundary(
-    space_name: str,
-    object_name: str,
-    faces: list[str] | None = None
+    space_name: str, object_name: str, faces: list[str] | None = None
 ) -> str:
     """
     Entfernt Begrenzungsflächen von einem Raum.
@@ -1332,6 +1575,39 @@ def remove_space_boundary(
         return bridge.raum_grenze_entfernen(space_name, object_name, faces)
     except Exception as e:
         return f"Fehler: {str(e)}"
+
+
+@mcp.tool()
+def save_document(path: str | None = None) -> str:
+    """
+    Saves the active FreeCAD document as FCStd. PERSISTS THE MODEL — call regularly!
+
+    Args:
+        path: Absolute or relative path (must stay inside the allowed working directory).
+              None = save under the document's existing file name (fails if never saved before).
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.speichere_dokument(path)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
+
+@mcp.tool()
+def recompute(object_name: str | None = None) -> str:
+    """
+    Recomputes the document (or a single object) and reports remaining TOUCHED/INVALID
+    objects, including affected children for INVALID containers.
+
+    Args:
+        object_name: Optional — recompute only this object first.
+    """
+    try:
+        bridge = get_bridge()
+        return bridge.rekalkuliere(object_name)
+    except Exception as e:
+        return f"Fehler: {str(e)}"
+
 
 if __name__ == "__main__":
     # Startet den MCP-Server
