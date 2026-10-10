@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 # Lade Umgebungsvariablen aus .env Datei
 load_dotenv()
 
+__version__ = "0.3"
+
 # Initialisiere FastMCP
 mcp = FastMCP("FreeCAD")
 

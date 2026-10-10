@@ -12,6 +12,7 @@ import queue
 import csv
 
 # --- Konfiguration ---
+__version__ = "0.3"
 PORT = 8000
 HOST = "localhost"
 ALLOWED_EXPORT_DIR = os.getcwd()
