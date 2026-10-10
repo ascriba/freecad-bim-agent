@@ -37,14 +37,28 @@ def test(name, func, expected_prefix=None):
             raise AssertionError(f"Expected '{expected_prefix}', got '{status}'")
         L(f"  PASS: {name} -> {status}")
         passed += 1
+        return result
     except Exception as e:
         L(f"  FAIL: {name} -> {e}")
         failed += 1
         errors.append(f"{name}: {e}")
+        return None
     try:
         App.ActiveDocument.recompute()
     except:
         pass
+
+
+def objektname(result):
+    """Extrahiert den internen FreeCAD-Namen aus einem '[Name]'-Suffix.
+
+    Erzeugungsfunktionen liefern z.B. 'Erfolg: Wuerfel [Wuerfel042]'. Nur der
+    interne Name ist eindeutig - Labels kollidieren, sobald mehrere gleichartige
+    Objekte im Dokument liegen.
+    """
+    if not result or "[" not in str(result):
+        raise AssertionError(f"Kein Objektname in Rueckgabe: {result!r}")
+    return str(result).rsplit("[", 1)[1].rstrip("]")
 
 
 L("=== MCP Bridge Test ===")
@@ -119,16 +133,14 @@ L("--- Boolean Operations ---")
 test("boolean_union", lambda: bridge.bool_union("Wuerfel", "Zylinder"), "Fusion:")
 
 L("--- Boolean Cut ---")
-test("cube2", lambda: bridge.erstelle_wuerfel("50mm", "50mm", "50mm"), "Erfolg:")
-for o in App.ActiveDocument.Objects:
-    if o.Label.startswith("Wuerfel") and o.Name != "Wuerfel":
-        bridge.umbenennen_objekt(o.Name, "CutBase")
-        break
-test("cyl2", lambda: bridge.erstelle_zylinder("20mm", "60mm"), "Erfolg:")
-for o in App.ActiveDocument.Objects:
-    if o.Label.startswith("Zylinder") and o.Name != "Zylinder":
-        bridge.umbenennen_objekt(o.Name, "CutTool")
-        break
+cut_base = objektname(
+    test("cube2", lambda: bridge.erstelle_wuerfel("50mm", "50mm", "50mm"), "Erfolg:")
+)
+bridge.umbenennen_objekt(cut_base, "CutBase")
+cut_tool = objektname(
+    test("cyl2", lambda: bridge.erstelle_zylinder("20mm", "60mm"), "Erfolg:")
+)
+bridge.umbenennen_objekt(cut_tool, "CutTool")
 test("boolean_cut", lambda: bridge.bool_cut("CutBase", "CutTool"), "Schnitt:")
 test(
     "boolean_cut_finalize",
@@ -267,19 +279,14 @@ def t_gate_info():
 test("gate_info", t_gate_info, None)
 
 L("--- move_by ---")
-test(
-    "move_by_vorbereiten",
-    lambda: bridge.erstelle_wuerfel("100mm", "100mm", "100mm"),
-    "Erfolg:",
+move_by_test = objektname(
+    test(
+        "move_by_vorbereiten",
+        lambda: bridge.erstelle_wuerfel("100mm", "100mm", "100mm"),
+        "Erfolg:",
+    )
 )
-for o in App.ActiveDocument.Objects:
-    if (
-        o.Label.startswith("Wuerfel")
-        and o.Name != "Wuerfel"
-        and o.Label != "TestWuerfel"
-    ):
-        bridge.umbenennen_objekt(o.Name, "MoveByTest")
-        break
+bridge.umbenennen_objekt(move_by_test, "MoveByTest")
 test(
     "move_by_setzen",
     lambda: bridge.setze_position("MoveByTest", 0.0, 0.0, 0.1),
@@ -300,31 +307,27 @@ def t_move_by():
 
 test("move_by", t_move_by, None)
 # move_by auf abgeleitetem Objekt (Part::Cut, absolute Geometrie)
-test(
-    "move_by_cut_base",
-    lambda: bridge.erstelle_wuerfel("200mm", "200mm", "200mm"),
-    "Erfolg:",
+move_by_cut_base = objektname(
+    test(
+        "move_by_cut_base",
+        lambda: bridge.erstelle_wuerfel("200mm", "200mm", "200mm"),
+        "Erfolg:",
+    )
 )
-for o in App.ActiveDocument.Objects:
-    if (
-        o.Label.startswith("Wuerfel")
-        and o.Name != "Wuerfel"
-        and o.Label not in ("TestWuerfel", "MoveByTest")
-    ):
-        bridge.umbenennen_objekt(o.Name, "MoveByCutBase")
-        break
-test("move_by_cut_tool", lambda: bridge.erstelle_zylinder("30mm", "300mm"), "Erfolg:")
-for o in App.ActiveDocument.Objects:
-    if o.Label.startswith("Zylinder") and o.Name != "Zylinder":
-        bridge.umbenennen_objekt(o.Name, "MoveByCutTool")
-        break
-test(
-    "move_by_cut", lambda: bridge.bool_cut("MoveByCutBase", "MoveByCutTool"), "Schnitt:"
+bridge.umbenennen_objekt(move_by_cut_base, "MoveByCutBase")
+move_by_cut_tool = objektname(
+    test(
+        "move_by_cut_tool", lambda: bridge.erstelle_zylinder("30mm", "300mm"), "Erfolg:"
+    )
 )
-schnitt_name = None
-for o in App.ActiveDocument.Objects:
-    if o.Name.startswith("Schnitt"):
-        schnitt_name = o.Name
+bridge.umbenennen_objekt(move_by_cut_tool, "MoveByCutTool")
+schnitt_name = objektname(
+    test(
+        "move_by_cut",
+        lambda: bridge.bool_cut("MoveByCutBase", "MoveByCutTool"),
+        "Schnitt:",
+    )
+)
 
 
 def t_move_by_cut():
@@ -342,11 +345,10 @@ def t_move_by_cut():
 test("move_by_cut_check", t_move_by_cut, None)
 
 L("--- mirror_object (Meter) ---")
-test("mirror_kugel", lambda: bridge.erstelle_kugel("100mm"), "Erfolg:")
-for o in App.ActiveDocument.Objects:
-    if o.Label.startswith("Kugel") and o.Name != "Kugel":
-        bridge.umbenennen_objekt(o.Name, "MirrorKugel")
-        break
+mirror_kugel = objektname(
+    test("mirror_kugel", lambda: bridge.erstelle_kugel("100mm"), "Erfolg:")
+)
+bridge.umbenennen_objekt(mirror_kugel, "MirrorKugel")
 test(
     "mirror_pos",
     lambda: bridge.setze_position("MirrorKugel", 0.0, 0.0, 0.0),
@@ -370,21 +372,14 @@ def t_mirror():
 test("mirror_check", t_mirror, None)
 
 L("--- get_quantities (aus Shape) ---")
-test(
-    "mengen_wuerfel",
-    lambda: bridge.erstelle_wuerfel("10400mm", "8400mm", "300mm"),
-    "Erfolg:",
+mengen_test = objektname(
+    test(
+        "mengen_wuerfel",
+        lambda: bridge.erstelle_wuerfel("10400mm", "8400mm", "300mm"),
+        "Erfolg:",
+    )
 )
-for o in App.ActiveDocument.Objects:
-    if (
-        o.Label.startswith("Wuerfel")
-        and o.Name != "Wuerfel"
-        and o.Label != "TestWuerfel"
-        and o.Label != "MoveByTest"
-        and o.Label != "MoveByCutBase"
-    ):
-        bridge.umbenennen_objekt(o.Name, "MengenTest")
-        break
+bridge.umbenennen_objekt(mengen_test, "MengenTest")
 
 
 def t_mengen():

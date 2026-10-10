@@ -267,7 +267,7 @@ class RobustFreeCADBridge:
                 self._parse_unit(h),
             )
             doc.recompute()
-            return f"Erfolg: {box.Label}"
+            return f"Erfolg: {box.Label} [{box.Name}]"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -277,7 +277,7 @@ class RobustFreeCADBridge:
             s = doc.addObject("Part::Sphere", "Kugel")
             s.Radius = self._parse_unit(radius)
             doc.recompute()
-            return f"Erfolg: {s.Label}"
+            return f"Erfolg: {s.Label} [{s.Name}]"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -288,7 +288,7 @@ class RobustFreeCADBridge:
             cyl.Radius = self._parse_unit(radius)
             cyl.Height = self._parse_unit(height)
             doc.recompute()
-            return f"Erfolg: {cyl.Label}"
+            return f"Erfolg: {cyl.Label} [{cyl.Name}]"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
@@ -375,7 +375,7 @@ class RobustFreeCADBridge:
             if hasattr(t, "ViewObject") and t.ViewObject:
                 t.ViewObject.Visibility = False
             doc.recompute()
-            return f"Schnitt: {cut.Label}"
+            return f"Schnitt: {cut.Label} [{cut.Name}]"
         except Exception as e:
             return f"Fehler: {str(e)}"
 
