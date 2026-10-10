@@ -61,10 +61,28 @@ class RobustFreeCADBridge:
                 )
         return "Fehler: Timeout im Main Thread (nach 2 Versuchen)."
 
+    def _bridge_source_path(self):
+        """Pfad zu dieser Datei - auch wenn FreeCAD kein __file__ setzt.
+
+        Reihenfolge: Umgebungsvariable FREECAD_BRIDGE_PATH, dann __file__,
+        dann das Arbeitsverzeichnis. Fuer Hot-Reload und Tests.
+        """
+        env = os.environ.get("FREECAD_BRIDGE_PATH")
+        if env:
+            return env
+        try:
+            return __file__
+        except NameError:
+            pass
+        local = os.path.join(os.getcwd(), "freecad_bridge.py")
+        if os.path.isfile(local):
+            return local
+        return "freecad_bridge.py"
+
     def hot_reload(self):
         """Ersetzt diese Instanz durch die neudefinierte Klasse aus der Datei."""
         try:
-            bridge_path = "/home/arne/Programmierung/OpenCode/Freecad/freecad_bridge.py"
+            bridge_path = self._bridge_source_path()
             exec(open(bridge_path).read(), globals())
             self.__class__ = RobustFreeCADBridge
             return "Bridge-Code neu geladen."

@@ -4,7 +4,17 @@ import sys
 import os
 
 if not hasattr(App, "_RobustFreeCADBridge"):
-    P = "/home/arne/Programmierung/OpenCode/Freecad/freecad_bridge.py"
+    # FreeCAD fuehrt diese Datei ueber stdin aus und setzt kein __file__.
+    # Ausserdem ist das Arbeitsverzeichnis von FreeCAD NICHT das, aus dem
+    # run_tests.sh startet (Snap startet in /var/lib/snapd/void). Deshalb
+    # uebergibt run_tests.sh den Pfad per Umgebungsvariable; die beiden
+    # anderen Wege sind nur Fallbacks fuer den Direktaufruf.
+    P = os.environ.get("FREECAD_BRIDGE_PATH")
+    if not P:
+        try:
+            P = os.path.abspath(__file__)
+        except NameError:
+            P = "freecad_bridge.py"
     exec(open(P).read().replace('if __name__ == "__main__":', "if False:"))
     App._RobustFreeCADBridge = RobustFreeCADBridge
 
